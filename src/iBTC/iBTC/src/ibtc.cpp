@@ -212,21 +212,18 @@ void load_pose_with_frame(
   }
 }
 
-//对雷达点云体素化下采样，获得雷达关键点
 void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
                          double voxel_size) {
   int intensity = rand() % 255;
   if (voxel_size < 0.01) {
     return;
   }
-  //实现哈希表的数据结构，用于存储体素点云 ，key为VOXEL_LOC，value为M_POINT
   std::unordered_map<VOXEL_LOC, M_POINT> voxel_map;
   uint plsize = pl_feat.size();
 
   for (uint i = 0; i < plsize; i++) {
     pcl::PointXYZI &p_c = pl_feat[i];
     float loc_xyz[3];
-     //点云体素化
     for (int j = 0; j < 3; j++) {
       loc_xyz[j] = p_c.data[j] / voxel_size;
       if (loc_xyz[j] < 0) {
@@ -257,7 +254,6 @@ void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
   pl_feat.clear();
   pl_feat.resize(plsize);
 
-  //获得体素内点云平均值，获得雷达关键点
   uint i = 0;
   for (auto iter = voxel_map.begin(); iter != voxel_map.end(); ++iter) {
     pl_feat[i].x = iter->second.xyz[0] / iter->second.count;
@@ -268,8 +264,6 @@ void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
   }
 
 }
-
-//计算两个二进制描述符之间的相似度
 double binary_similarity(const BinaryDescriptor &b1,
                          const BinaryDescriptor &b2) {
   if (b1.summary_ == 0 || b2.summary_ == 0) return 1.0f;
@@ -3445,7 +3439,6 @@ void candidate_searcher_old(
   // getchar();
 }
 
-//RANSAC
 void triangle_solver(std::pair<STD, STD> &std_pair, Eigen::Matrix3d &std_rot,
                      Eigen::Vector3d &std_t) {
   Eigen::Matrix3d src = Eigen::Matrix3d::Zero();
@@ -3456,7 +3449,6 @@ void triangle_solver(std::pair<STD, STD> &std_pair, Eigen::Matrix3d &std_rot,
   ref.col(0) = std_pair.second.binary_A_.location_ - std_pair.second.center_;
   ref.col(1) = std_pair.second.binary_B_.location_ - std_pair.second.center_;
   ref.col(2) = std_pair.second.binary_C_.location_ - std_pair.second.center_;
-  // H
   Eigen::Matrix3d covariance = src * ref.transpose();
   Eigen::JacobiSVD<Eigen::MatrixXd> svd(covariance, Eigen::ComputeThinU |
                                                         Eigen::ComputeThinV);
@@ -3653,120 +3645,6 @@ void fine_loop_detection_tbb(
   return;
 }
 
-//RANSAC_1pt
-Matf7D ransac1Pt(Matf7D& x, float t) {
-    int s = 1;
-    int max_trials = 10000;
-    int npts = x.cols();
-
-    float p = 0.99; // Desired probability of choosing at least one samplefree from outliers
-    int trialcount = 0;
-    int bestscore = 0;
-    Matf7D bestinliers; //
-
-    float N = 1; // Dummy initialisation for number of trials.            
-    float t2 = 2.0 * t; // 
-    float eps = std::numeric_limits<float>::epsilon();
-    
-    while (N > trialcount) {
-        int ind = std::rand() % npts;
-        Eigen::Matrix<float, 7, 1> seedpoint = x.col(ind);
-        Matf7D lineset = x;
-        lineset.topRows(6) = x.topRows(6).colwise() - seedpoint.head(6);
-
-        Matf1D D1 = lineset.topRows(3).colwise().norm();
-        Matf3D D2_block = lineset.block(3,0,5,lineset.cols());
-        Matf1D D2 = D2_block.colwise().norm();
-        Matf1D len = (D1 - D2).array().abs();
-       
-        Mati1D flag = (len.array() < t2).cast<int>();
-        Mati1D inlier_column = getNonZeroColumnIndicesFromRowVector(flag);
-        Matf7D inliers(x.rows(), inlier_column.cols());
-        for (int i = 0; i < inlier_column.cols(); ++i) {
-            inliers.col(i) = x.col(inlier_column(i));
-          }
-
-        int s1 = inliers.cols();
-        int inlier_size = 0; // 
-        for (int i = 1; i <= 50; ++i) {
-            Matf3D src = inliers.topRows(3);
-            Matf3D dst = inliers.block(3,0,5,inliers.cols());
-
-            Eigen::MatrixXf src_dist_matrix(src.cols(), src.cols());
-            Eigen::MatrixXf dst_dist_matrix(dst.cols(), dst.cols());
-            computeDistanceMatrix(src, src_dist_matrix);
-            computeDistanceMatrix(dst, dst_dist_matrix);
-            Eigen::MatrixXf Z = (src_dist_matrix - dst_dist_matrix).array().abs();
-            Eigen::MatrixXi F = (Z.array() < t2).cast<int>();
-            inlier_size = std::ceil(std::sqrt(F.sum()));
-            
-            Mati1D F_colwise_sum = F.colwise().sum();
-            std::vector<int> sorted_column_indices_total;
-            sortRowVectorDescending(F_colwise_sum, sorted_column_indices_total);
-
-            std::vector<int> sorted_column_indices_inlier(sorted_column_indices_total.begin(), 
-                sorted_column_indices_total.begin() + inlier_size);
-            Matf7D selected_inliers(inliers.rows(), sorted_column_indices_inlier.size());
-            for (int j = 0; j < sorted_column_indices_inlier.size(); ++j) {
-                selected_inliers.col(j) = inliers.col(sorted_column_indices_inlier[j]);
-              }
-            inliers = selected_inliers;
-
-            if ((s1 - inlier_size) < 5) {
-                break;
-            }
-            s1 = inlier_size;
-        }
-
-        if (inlier_size > bestscore) {
-            bestscore = inlier_size;
-            bestinliers = inliers;
-            float fracinliers = static_cast<float>(inlier_size) / npts;
-            float pNoOutliers = 1 - std::pow(fracinliers, s);
-            pNoOutliers = std::max(eps, pNoOutliers); // Avoid division by -Inf
-            pNoOutliers = std::min(1 - eps, pNoOutliers); // Avoid division by 0.
-            N = log(1-p)/log(pNoOutliers);
-            N = std::max(N, static_cast<float>(0)); // at least try 
-        }
-        ++trialcount; 
-
-        if (trialcount > max_trials) {
-            break;
-        }
-    }
-  
-    return bestinliers;
-}
-
-
-Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags) {
-    int count = 0;
-    Mati1D nonzero_column(1, flags.count());
-    for (int i = 0; i < flags.cols(); ++i) {
-        if (flags(0, i) > 0) {
-            nonzero_column(0, count++) = i;
-        } 
-    }
-    return nonzero_column;
-}
-
-void computeDistanceMatrix(const Matf3D& data, Eigen::MatrixXf& dist_matrix) {
-    for (int i = 0; i < data.cols(); ++i)
-        dist_matrix.row(i) = (data.colwise() - data.col(i)).colwise().norm();
-}
-
-void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices) {
-    std::vector<int> sorted_data(data.cols());
-    sorted_column_indices.resize(data.cols());
-    for (int i = 0; i < data.cols(); ++i) {
-        sorted_data[i] = data(0, i);
-        sorted_column_indices[i] = i;
-    }
-
-    std::sort(sorted_column_indices.begin(), sorted_column_indices.end(), [&sorted_data](int i, int j) {
-        return sorted_data[i] > sorted_data[j]; });  
-}
-
 void rgb_fine_loop_detection_tbb(
     const ConfigSetting &config_setting,
     std::vector<std::pair<STD, STD>> &match_list, bool &fine_sucess,
@@ -3780,34 +3658,19 @@ void rgb_fine_loop_detection_tbb(
   fine_sucess = false;
   std::time_t solve_time = 0;
   std::time_t verify_time = 0;
-
-  Matf7D match_matrix(7,match_list.size());
-  for (size_t i = 0; i < match_list.size(); i++) {
-          auto &pair = match_list[i];
-          match_matrix(0, i) = pair.first.center_.x();
-          match_matrix(1, i) = pair.first.center_.y();
-          match_matrix(2, i) = pair.first.center_.z();
-          match_matrix(3, i) = pair.second.center_.x();
-          match_matrix(4, i) = pair.second.center_.y();
-          match_matrix(5, i) = pair.second.center_.z();
-          match_matrix(6, i) = i;
-        }
-  Matf7D inliers = ransac1Pt(match_matrix, 5);
-
-  int use_size = inliers.cols();
-  std::cout << "use_size: " << use_size << std::endl;
-  std::cout << "match_list_size:" << match_list.size()<<std::endl;
+  int skip_len = (int)(match_list.size() / 50) + 1;
+  int use_size = match_list.size() / skip_len;
   std::vector<size_t> index(use_size);
-  std::vector<int> vote_list(match_list.size(),0);
+  std::vector<int> vote_list(use_size);
   for (size_t i = 0; i < index.size(); i++) {
-    index[i] = inliers(6,i);
+    index[i] = i;
   }
   std::mutex mylock;
   auto t0 = std::chrono::high_resolution_clock::now();
   std::for_each(
       std::execution::par_unseq, index.begin(), index.end(),
       [&](const size_t &i) {
-        auto single_pair = match_list[i];
+        auto single_pair = match_list[i * skip_len];
         int vote = 0;
         Eigen::Matrix3d test_rot;
         Eigen::Vector3d test_t;
@@ -3857,7 +3720,7 @@ void rgb_fine_loop_detection_tbb(
 //  if (max_vote >= 4) {
   if (max_vote >= ransac_Rt_thr_tmp) {
     fine_sucess = true;
-    auto best_pair = match_list[max_vote_index];
+    auto best_pair = match_list[max_vote_index * skip_len];
     int vote = 0;
     Eigen::Matrix3d test_rot;
     Eigen::Vector3d test_t;
@@ -3891,230 +3754,118 @@ void rgb_fine_loop_detection_tbb(
   } else {
     fine_sucess = false;
   }
+
+//#define brief
+#ifdef brief
+  if (max_vote >= config_setting.ransac_Rt_thr)
+  {
+      pcl::PointCloud<pcl::PointXYZ> key_points_cloud_source;
+      for (auto var : bin_list) {
+//        if (var.summary_ != 0) continue;
+        Eigen::Vector3d pi_transform = std_rot * var.location_ + std_t;
+        pcl::PointXYZ pi;
+        pi.x = pi_transform[0];
+        pi.y = pi_transform[1];
+        pi.z = pi_transform[2];
+        key_points_cloud_source.push_back(pi);
+      }
+
+      pcl::PointCloud<pcl::PointXYZ> key_points_cloud_target;
+      for (auto var : bin_list_vec[match_id]) {
+//        if (var.summary_ != 0) continue;
+        pcl::PointXYZ pi;
+        pi.x = var.location_[0];
+        pi.y = var.location_[1];
+        pi.z = var.location_[2];
+        key_points_cloud_target.push_back(pi);
+      }
+
+      pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
+            new pcl::KdTreeFLANN<pcl::PointXYZ>);
+      kd_tree->setInputCloud(key_points_cloud_target.makeShared());
+      int K = 5;
+      std::vector<int> pointIdxNKNSearch(K);
+      std::vector<float> pointNKNSquaredDistance(K);
+      int accepted_2dkp_ransac = 0;
+      float dis_thr = 0.1;
+      float brf_similarity_thr = 0.7;
+      //int accepted_2dkp_ransac_thr = 6;
+      //float score_brf_spatial = 0;
+      for (size_t si = 0; si < key_points_cloud_source.size(); si++) {
+        pcl::PointXYZ searchPoint = key_points_cloud_source.points[si];
+        if (kd_tree->nearestKSearch(searchPoint, K, pointIdxNKNSearch,
+                                    pointNKNSquaredDistance) > 0) {
+          if (pointNKNSquaredDistance[0] > dis_thr) continue;
+          //debug_file << "(brf_similarity, dis) = " ;
+          double brf_similarity_max = 0.0f;
+          int inn_max = -10000;
+          //int spatial_dis_out = 0;
+          int possible_good_match = 0;
+          for (int inn = 0; inn < pointIdxNKNSearch.size(); inn++)
+          {
+            if (pointNKNSquaredDistance[inn] > dis_thr) continue;
+            auto b1_brief_array = bin_list_vec[match_id][pointIdxNKNSearch[inn]].brief_array_;
+            auto b2_brief_array = bin_list[si].brief_array_;
+            if (b1_brief_array.size() == 0 || b2_brief_array.size() == 0){
+              //debug_file << -1 ;
+            }
+            else{
+              Eigen::Vector3d b1_vis_direction = sorter[std::to_string(bin_list_vec[match_id][pointIdxNKNSearch[inn]].breif_obs_t).erase(15)].m_pose_w_2_c_t;
+              Eigen::Vector3d b2_vis_direction = sorter[std::to_string(bin_list[si].breif_obs_t).erase(15)].m_pose_w_2_c_t;
+              Eigen::Vector3d b2_vis_direction_transform = std_rot * b2_vis_direction + std_t;
+              b2_vis_direction_transform = b2_vis_direction_transform - Eigen::Vector3d(searchPoint.x, searchPoint.y, searchPoint.z);
+              b1_vis_direction = b1_vis_direction - Eigen::Vector3d(searchPoint.x, searchPoint.y, searchPoint.z);
+              float angle = std::acos(b2_vis_direction_transform.dot(b1_vis_direction)/ (b2_vis_direction_transform.norm()*b1_vis_direction.norm()));
+//              if ( 180*angle/3.14 > 100 )
+//              {
+//                possible_good_match++;
+//                debug_file << "vis direction angle: " << 180*angle/3.14 << std::endl;
+//              }
+
+              double dis = 0;
+              for (size_t i = 0; i < b1_brief_array.size(); i++) {
+                if (b1_brief_array[i] == true && b2_brief_array[i] == true) {
+                  dis += 1;
+                }
+                if (b1_brief_array[i] == false && b2_brief_array[i] == false) {
+                  dis += 1;
+                }
+              }
+              double brf_similarity = dis/ float(b1_brief_array.size());
+              //if (brf_similarity_max > brf_similarity)  spatial_dis_out = pointNKNSquaredDistance[inn];
+              inn_max = brf_similarity_max > brf_similarity ? inn_max:inn;
+              brf_similarity_max = brf_similarity_max > brf_similarity ? brf_similarity_max:brf_similarity;
+              //debug_file << "(" << brf_similarity << ", " << pointNKNSquaredDistance[inn] << ") ";
+
+            }
+          }
+          if (brf_similarity_max > brf_similarity_thr)
+          {
+            accepted_2dkp_ransac++;
+          }
+          else
+          {
+            if (possible_good_match > 0)  accepted_2dkp_ransac++;
+          }
+          //score_brf_spatial += brf_similarity_thr*((dis_thr - spatial_dis_out)/dis_thr)*((dis_thr - spatial_dis_out)/dis_thr);
+          //debug_file << std::endl;
+        }
+      }
+      debug_file << "[Fine Match] accepted_2dkp_ransac: " << accepted_2dkp_ransac << std::endl;
+      //debug_file << "score_brf_spatial: " << score_brf_spatial << std::endl;
+      if (accepted_2dkp_ransac < accepted_2dkp_ransac_thr)
+      {
+          sucess_match_list.clear();
+          unsucess_match_list.clear();
+          fine_sucess = false;
+          debug_file << "reject! " << std::endl;
+      }
+
+  }
+#endif
   return;
 }
-// void rgb_fine_loop_detection_tbb(
-//     const ConfigSetting &config_setting,
-//     std::vector<std::pair<STD, STD>> &match_list, bool &fine_sucess,
-//     Eigen::Matrix3d &std_rot, Eigen::Vector3d &std_t,
-//     std::vector<std::pair<STD, STD>> &sucess_match_list,
-//     std::vector<std::pair<STD, STD>> &unsucess_match_list, bool &is_rgb_case,
-//     const int &match_frame, std::fstream & debug_file) {
-//   sucess_match_list.clear();
-//   unsucess_match_list.clear();
-//   double dis_threshold = 1;// std:  3;
-//   fine_sucess = false;
-//   std::time_t solve_time = 0;
-//   std::time_t verify_time = 0;
-//   int skip_len = (int)(match_list.size() / 50) + 1;
-//   int use_size = match_list.size() / skip_len;
-//   std::vector<size_t> index(use_size);
-//   std::vector<int> vote_list(use_size);
-//   for (size_t i = 0; i < index.size(); i++) {
-//     index[i] = i;
-//   }
-//   std::mutex mylock;
-//   auto t0 = std::chrono::high_resolution_clock::now();
-//   std::for_each(
-//       std::execution::par_unseq, index.begin(), index.end(),
-//       [&](const size_t &i) {
-//         auto single_pair = match_list[i * skip_len];
-//         int vote = 0;
-//         Eigen::Matrix3d test_rot;
-//         Eigen::Vector3d test_t;
-//         triangle_solver(single_pair, test_rot, test_t);
-//         for (size_t j = 0; j < match_list.size(); j++) {
-//           auto verify_pair = match_list[j];
-//           Eigen::Vector3d A = verify_pair.first.binary_A_.location_;
-//           Eigen::Vector3d A_transform = test_rot * A + test_t;
-//           Eigen::Vector3d B = verify_pair.first.binary_B_.location_;
-//           Eigen::Vector3d B_transform = test_rot * B + test_t;
-//           Eigen::Vector3d C = verify_pair.first.binary_C_.location_;
-//           Eigen::Vector3d C_transform = test_rot * C + test_t;
-//           double dis_A =
-//               (A_transform - verify_pair.second.binary_A_.location_).norm();
-//           double dis_B =
-//               (B_transform - verify_pair.second.binary_B_.location_).norm();
-//           double dis_C =
-//               (C_transform - verify_pair.second.binary_C_.location_).norm();
-//           if (dis_A < dis_threshold && dis_B < dis_threshold &&
-//               dis_C < dis_threshold) {
-//             vote++;
-//           }
-//         }
-//         mylock.lock();
-//         vote_list[i] = vote;
-//         mylock.unlock();
-//       });
-//   int max_vote_index = 0;
-//   int max_vote = 0;
-//   for (size_t i = 0; i < vote_list.size(); i++) {
-//     if (max_vote < vote_list[i]) {
-//       max_vote_index = i;
-//       max_vote = vote_list[i];
-//     }
-//   }
-//   int ransac_Rt_thr_tmp = config_setting.ransac_Rt_thr;
-//   if (match_list[0].second.binary_A_.summary_ == 0)
-//   {
-//     ransac_Rt_thr_tmp = 1;
-//     debug_file << "[Fine Match] rgb - R t vote: " << match_frame << "," << max_vote << std::endl;
-//   }
-//   else
-//   {
-//     debug_file << "[Fine Match] geo - R t vote: " << match_frame << "," << max_vote << std::endl;
-//   }
-//   // old 4
-// //  if (max_vote >= 4) {
-//   if (max_vote >= ransac_Rt_thr_tmp) {
-//     fine_sucess = true;
-//     auto best_pair = match_list[max_vote_index * skip_len];
-//     int vote = 0;
-//     Eigen::Matrix3d test_rot;
-//     Eigen::Vector3d test_t;
-//     triangle_solver(best_pair, test_rot, test_t);
-//     std_rot = test_rot;
-//     std_t = test_t;
-//     for (size_t j = 0; j < match_list.size(); j++)
-//     {
-//       auto verify_pair = match_list[j];
-//       Eigen::Vector3d A = verify_pair.first.binary_A_.location_;
-//       Eigen::Vector3d A_transform = test_rot * A + test_t;
-//       Eigen::Vector3d B = verify_pair.first.binary_B_.location_;
-//       Eigen::Vector3d B_transform = test_rot * B + test_t;
-//       Eigen::Vector3d C = verify_pair.first.binary_C_.location_;
-//       Eigen::Vector3d C_transform = test_rot * C + test_t;
-//       double dis_A =
-//           (A_transform - verify_pair.second.binary_A_.location_).norm();
-//       double dis_B =
-//           (B_transform - verify_pair.second.binary_B_.location_).norm();
-//       double dis_C =
-//           (C_transform - verify_pair.second.binary_C_.location_).norm();
 
-//       if (dis_A < dis_threshold && dis_B < dis_threshold &&
-//           dis_C < dis_threshold) {
-
-//         sucess_match_list.push_back(verify_pair);
-//       } else {
-//         unsucess_match_list.push_back(verify_pair);
-//       }
-//     }
-//   } else {
-//     fine_sucess = false;
-//   }
-
-// //#define brief
-// #ifdef brief
-//   if (max_vote >= config_setting.ransac_Rt_thr)
-//   {
-//       pcl::PointCloud<pcl::PointXYZ> key_points_cloud_source;
-//       for (auto var : bin_list) {
-// //        if (var.summary_ != 0) continue;
-//         Eigen::Vector3d pi_transform = std_rot * var.location_ + std_t;
-//         pcl::PointXYZ pi;
-//         pi.x = pi_transform[0];
-//         pi.y = pi_transform[1];
-//         pi.z = pi_transform[2];
-//         key_points_cloud_source.push_back(pi);
-//       }
-
-//       pcl::PointCloud<pcl::PointXYZ> key_points_cloud_target;
-//       for (auto var : bin_list_vec[match_id]) {
-// //        if (var.summary_ != 0) continue;
-//         pcl::PointXYZ pi;
-//         pi.x = var.location_[0];
-//         pi.y = var.location_[1];
-//         pi.z = var.location_[2];
-//         key_points_cloud_target.push_back(pi);
-//       }
-
-//       pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
-//             new pcl::KdTreeFLANN<pcl::PointXYZ>);
-//       kd_tree->setInputCloud(key_points_cloud_target.makeShared());
-//       int K = 5;
-//       std::vector<int> pointIdxNKNSearch(K);
-//       std::vector<float> pointNKNSquaredDistance(K);
-//       int accepted_2dkp_ransac = 0;
-//       float dis_thr = 0.1;
-//       float brf_similarity_thr = 0.7;
-//       //int accepted_2dkp_ransac_thr = 6;
-//       //float score_brf_spatial = 0;
-//       for (size_t si = 0; si < key_points_cloud_source.size(); si++) {
-//         pcl::PointXYZ searchPoint = key_points_cloud_source.points[si];
-//         if (kd_tree->nearestKSearch(searchPoint, K, pointIdxNKNSearch,
-//                                     pointNKNSquaredDistance) > 0) {
-//           if (pointNKNSquaredDistance[0] > dis_thr) continue;
-//           //debug_file << "(brf_similarity, dis) = " ;
-//           double brf_similarity_max = 0.0f;
-//           int inn_max = -10000;
-//           //int spatial_dis_out = 0;
-//           int possible_good_match = 0;
-//           for (int inn = 0; inn < pointIdxNKNSearch.size(); inn++)
-//           {
-//             if (pointNKNSquaredDistance[inn] > dis_thr) continue;
-//             auto b1_brief_array = bin_list_vec[match_id][pointIdxNKNSearch[inn]].brief_array_;
-//             auto b2_brief_array = bin_list[si].brief_array_;
-//             if (b1_brief_array.size() == 0 || b2_brief_array.size() == 0){
-//               //debug_file << -1 ;
-//             }
-//             else{
-//               Eigen::Vector3d b1_vis_direction = sorter[std::to_string(bin_list_vec[match_id][pointIdxNKNSearch[inn]].breif_obs_t).erase(15)].m_pose_w_2_c_t;
-//               Eigen::Vector3d b2_vis_direction = sorter[std::to_string(bin_list[si].breif_obs_t).erase(15)].m_pose_w_2_c_t;
-//               Eigen::Vector3d b2_vis_direction_transform = std_rot * b2_vis_direction + std_t;
-//               b2_vis_direction_transform = b2_vis_direction_transform - Eigen::Vector3d(searchPoint.x, searchPoint.y, searchPoint.z);
-//               b1_vis_direction = b1_vis_direction - Eigen::Vector3d(searchPoint.x, searchPoint.y, searchPoint.z);
-//               float angle = std::acos(b2_vis_direction_transform.dot(b1_vis_direction)/ (b2_vis_direction_transform.norm()*b1_vis_direction.norm()));
-// //              if ( 180*angle/3.14 > 100 )
-// //              {
-// //                possible_good_match++;
-// //                debug_file << "vis direction angle: " << 180*angle/3.14 << std::endl;
-// //              }
-
-//               double dis = 0;
-//               for (size_t i = 0; i < b1_brief_array.size(); i++) {
-//                 if (b1_brief_array[i] == true && b2_brief_array[i] == true) {
-//                   dis += 1;
-//                 }
-//                 if (b1_brief_array[i] == false && b2_brief_array[i] == false) {
-//                   dis += 1;
-//                 }
-//               }
-//               double brf_similarity = dis/ float(b1_brief_array.size());
-//               //if (brf_similarity_max > brf_similarity)  spatial_dis_out = pointNKNSquaredDistance[inn];
-//               inn_max = brf_similarity_max > brf_similarity ? inn_max:inn;
-//               brf_similarity_max = brf_similarity_max > brf_similarity ? brf_similarity_max:brf_similarity;
-//               //debug_file << "(" << brf_similarity << ", " << pointNKNSquaredDistance[inn] << ") ";
-
-//             }
-//           }
-//           if (brf_similarity_max > brf_similarity_thr)
-//           {
-//             accepted_2dkp_ransac++;
-//           }
-//           else
-//           {
-//             if (possible_good_match > 0)  accepted_2dkp_ransac++;
-//           }
-//           //score_brf_spatial += brf_similarity_thr*((dis_thr - spatial_dis_out)/dis_thr)*((dis_thr - spatial_dis_out)/dis_thr);
-//           //debug_file << std::endl;
-//         }
-//       }
-//       debug_file << "[Fine Match] accepted_2dkp_ransac: " << accepted_2dkp_ransac << std::endl;
-//       //debug_file << "score_brf_spatial: " << score_brf_spatial << std::endl;
-//       if (accepted_2dkp_ransac < accepted_2dkp_ransac_thr)
-//       {
-//           sucess_match_list.clear();
-//           unsucess_match_list.clear();
-//           fine_sucess = false;
-//           debug_file << "reject! " << std::endl;
-//       }
-
-//   }
-// #endif
-//   return;
-// }
-
-//ggg
 double
 rgb_geometric_verify(const pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr &source_cloud,
                      const pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr &target_cloud,
@@ -4236,7 +3987,6 @@ geometric_verify(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
   return useful_match / source_cloud->size();
 }
 
-//几何验证
 double
 geometric_verify(const ConfigSetting &config_setting,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,

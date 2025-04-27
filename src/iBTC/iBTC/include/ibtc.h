@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/StdVector>
@@ -28,15 +27,6 @@
 
 #include <chrono>
 
-//增加
-// #include <emmintrin.h>
-
-// inline size_t count_equal(const std::vector<__m128i> &vec1, const std::vector<__m128i> &vec2, const int &n) __attribute__((__may_alias__));
-// inline size_t count_equal_tgt(const std::vector<__m128i> &vec1a, const std::vector<__m128i> &vec2a, const std::vector<__m128i> &vec1b, const std::vector<__m128i> &vec2b, const std::vector<__m128i> &vec1c, const std::vector<__m128i> &vec2c, const int &n) __attribute__((__may_alias__));
-// inline float calc_similarity(const std::vector<__m128i> &b1, const std::vector<__m128i> &b2) __attribute__((__may_alias__));
-// inline float calc_brief_hamming_dis(const std::vector<__m128i> &b1, const std::vector<__m128i> &b2) __attribute__((__may_alias__));
-//
-
 #define HASH_P 116101
 #define MAX_N 10000000000
 
@@ -46,13 +36,6 @@ typedef struct cloud_bounding_box {
   Eigen::Vector2f z_lim_;
   int frame_id_;
 } cloud_bounding_box;
-
-//
-typedef Eigen::Matrix<float, 7, Eigen::Dynamic> Matf7D;
-typedef Eigen::Matrix<float, 3, Eigen::Dynamic> Matf3D;
-typedef Eigen::Matrix<int, 1, Eigen::Dynamic> Mati1D;
-typedef Eigen::Matrix<float, 1, Eigen::Dynamic> Matf1D;
-//
 
 typedef struct ConfigSetting {
   /* for point cloud pre-preocess*/
@@ -556,13 +539,6 @@ void fine_loop_detection_tbb(const ConfigSetting &config_setting,
     Eigen::Matrix3d &std_rot, Eigen::Vector3d &std_t,
     std::vector<std::pair<STD, STD>> &sucess_match_list,
     std::vector<std::pair<STD, STD>> &unsucess_match_list);
-
-//One-point RANSAC
-Matf7D ransac1Pt(Matf7D& x, float t);
-Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags);
-void computeDistanceMatrix(const Matf3D& data, Eigen::MatrixXf& dist_matrix);
-void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices);
-//
 
 void rgb_fine_loop_detection_tbb(
     const ConfigSetting &config_setting,

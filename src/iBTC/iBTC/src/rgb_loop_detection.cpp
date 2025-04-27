@@ -108,7 +108,6 @@ void pyrDown_multiple(const cv::Mat& img_cur, cv::Mat& img_ds, int layer_num)
     }
 }
 
-//分割函数，将输入字符串 s 按照指定的分隔符 c 进行分割，并将结果存储在向量 v 中
 void split_string(const std::string& s, std::vector<std::string>& v, const std::string& c)
 {
      std::string::size_type pos1, pos2;
@@ -125,7 +124,6 @@ void split_string(const std::string& s, std::vector<std::string>& v, const std::
          v.push_back(s.substr(pos1));
 }
 
-//从两个文件中加载相机和IMU的位姿数据，并将其存储在一个排序器 sorter中
 bool load_poses(std::map<std::string, imu_lidar_camera>& sorter, const std::string &file_name, const std::string &file_name2)
 {
     std::ifstream infile;
@@ -293,7 +291,6 @@ int main(int argc, char **argv) {
     std::cout << "- cy: " << cy << std::endl;
     std::cout << "- pre_ds_image_level: " << pre_ds_image_level << std::endl;
 
-    // 预降采样 2^pre_ds_image_level
     float pre_ds_scalar = pow(2, pre_ds_image_level);
     IMG_WID /= pre_ds_scalar; IMG_HEI /= pre_ds_scalar; fx /= pre_ds_scalar; fy /= pre_ds_scalar; cx /= pre_ds_scalar; cy /= pre_ds_scalar;
     std::cout << "- IMG_WID: " << IMG_WID << std::endl;
@@ -313,7 +310,6 @@ int main(int argc, char **argv) {
     std::cout << "R_lidar_to_imu: " << std::endl << R_lidar_to_imu << std::endl;
     std::cout << "t_lidar_to_imu: " << t_lidar_to_imu.transpose() << std::endl;
 
-    //降采样s
     layer_num = floor(double(IMG_WID+IMG_HEI)*0.5/500.0f);
 
     std::string save_directory;
@@ -321,7 +317,7 @@ int main(int argc, char **argv) {
     int save_for_pr_eval = 1; //true;
     nh.getParam("save_for_pr_eval", save_for_pr_eval);
     int save_for_avgrecall_eval = 0; //true;
-    nh.getParam("save_for_avgrecall_eval", save_for_avgrecall_eval); //launch文件注释了参数
+    nh.getParam("save_for_avgrecall_eval", save_for_avgrecall_eval);
     if (save_for_pr_eval)
     {
         save_for_avgrecall_eval = 0; // cannot do both eval record at the same time
@@ -337,7 +333,6 @@ int main(int argc, char **argv) {
     std::fstream timelog_file = std::fstream(save_directory + "timelog.txt", std::fstream::out);
     std::fstream gt_doc = std::fstream(save_directory + "lc_gt_doc.txt", std::fstream::out);
 
-//发布方创建
     ros::Publisher pubOdomAftMapped =
         nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
     ros::Publisher pubRegisterCloud =
