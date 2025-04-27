@@ -1,0 +1,78 @@
+%YAML:1.0
+
+# pre process
+# ds_size：降采样大小，表示点云数据在预处理时的体素网格大小。
+ds_size: 0.25
+# useful_corner_num：有用的角点数量，表示在预处理过程中保留的角点数量。
+useful_corner_num: 30
+# stop_skip_enable：停止跳过使能，表示是否启用停止跳过功能，0 表示禁用。
+stop_skip_enable: 0
+
+# key points
+# plane_detection_thre：平面检测阈值，表示平面检测的阈值。
+plane_detection_thre: 0.01
+# plane_merge_normal_thre：平面合并法线阈值，表示平面合并时法线的阈值。
+plane_merge_normal_thre: 0.1
+# plane_merge_dis_thre：平面合并距离阈值，表示平面合并时距离的阈值。
+plane_merge_dis_thre: 0.3
+# voxel_size：体素大小，表示体素化时的网格大小。
+voxel_size: 0.5
+# voxel_init_num：体素初始化数量，表示初始化时的体素数量。
+voxel_init_num: 10
+# proj_plane_num：投影平面数量，表示投影使用的平面数量。
+proj_plane_num: 1
+# proj_image_resolution：投影图像分辨率，表示投影图像的分辨率。
+proj_image_resolution: 0.5
+# proj_image_high_inc：投影图像高度增量，表示投影图像高度的增量。
+proj_image_high_inc: 0.1
+# proj_dis_min：投影最小距离，表示投影的最小距离阈值。
+proj_dis_min: 0.2
+# proj_dis_max：投影最大距离，表示投影的最大距离阈值。
+proj_dis_max: 5
+# summary_min_thre：汇总最小阈值，表示特征汇总的最小阈值。
+summary_min_thre: 6
+# line_filter_enable：线特征过滤使能，表示是否启用线特征过滤，1表示启用。
+line_filter_enable: 1
+
+# geo descriptor
+# descriptor_near_num：描述符邻域数量，表示描述符计算时的邻域数量。
+descriptor_near_num: 15
+# descriptor_min_len：描述符最小长度，表示描述符的最小长度阈值。
+descriptor_min_len: 2
+# descriptor_max_len：描述符最大长度，表示描述符的最大长度阈值。
+descriptor_max_len: 300
+# max_constrait_dis：最大约束距离，表示特征匹配时的最大距离约束。
+max_constrait_dis: 2
+# similarity_threshold：相似度阈值，表示特征匹配时的相似度阈值。
+similarity_threshold: 0.7
+# triangle_resolution：三角形分辨率，表示三角形描述符的分辨率参数。
+triangle_resolution: 2
+
+# vis descriptor
+# vis_useful_corner_num：可视化有用角点数量，表示在可视化过程中保留的角点数量。
+vis_useful_corner_num: 30
+# vis_des_near_num：可视化描述符邻近数量，表示可视化描述符的邻近数量。
+vis_des_near_num: 50
+# vis_sim_threshold：可视化相似度阈值，表示可视化相似度的阈值。
+vis_sim_threshold: 0.5
+
+# candidate search
+# skip_near_num：跳过邻近数量，表示候选帧搜索时跳过的邻近帧数量。
+skip_near_num: 50
+# candidate_num：候选帧数量，表示保留的候选帧数量。
+candidate_num: 5
+# sub_frame_num：子帧数量，表示用于匹配的子帧数量。
+sub_frame_num: 10
+# ransac_Rt_thr：RANSAC旋转平移阈值，表示RANSAC算法中的旋转和平移阈值。
+ransac_Rt_thr: 4
+# rough_dis_threshold：粗略距离阈值，表示粗匹配时的距离阈值。
+rough_dis_threshold: 1 #0.2 0.5
+# normal_threshold：法线阈值，表示法线匹配的阈值。
+normal_threshold: 1
+# dis_threshold：距离阈值，表示精匹配时的距离阈值。
+dis_threshold: 0.6
+# icp_threshold：ICP阈值，表示平面-平面重叠度的阈值，用于SLAM系统。
+icp_threshold: 0.5  # plane-plane overlap, used for SLAM system
+
+# result record
+is_kitti: 0
