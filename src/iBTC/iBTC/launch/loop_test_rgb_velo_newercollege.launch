@@ -1,5 +1,5 @@
 <launch>
-  <param name="SaveDir" type="string" value="/home/ros/ws_iBTC/logs/BTC/newercollege/"/>
+  <param name="SaveDir" type="string" value="/home/ros/ws_iBTC/logs/iBTC/newercollege/"/>
   <arg name="rviz" default="true" />
 
   <param name="setting_path" type="string" value = "$(find ibtc)/config/config_velo_newercollege.yaml"/>

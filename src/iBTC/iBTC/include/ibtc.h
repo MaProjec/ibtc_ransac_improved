@@ -37,6 +37,16 @@ typedef struct cloud_bounding_box {
   int frame_id_;
 } cloud_bounding_box;
 
+//
+// eigen matrix
+// Mat<type><rows><cols>, D:dynamic
+typedef Eigen::Matrix<double, 6, Eigen::Dynamic> Matd6D;
+typedef Eigen::Matrix<double, 3, Eigen::Dynamic> Matd3D;
+typedef Eigen::Matrix<double, Eigen::Dynamic, 3> MatdD3;
+typedef Eigen::Matrix<int, 1, Eigen::Dynamic> Mati1D;
+typedef Eigen::Matrix<double, 1, Eigen::Dynamic> Matd1D;
+//
+
 typedef struct ConfigSetting {
   /* for point cloud pre-preocess*/
   int stop_skip_enable_ = 0;
@@ -557,6 +567,24 @@ double
 geometric_verify(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
                  const Eigen::Matrix3d &rot, const Eigen::Vector3d &t);
+
+//
+Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags);
+
+Eigen::Matrix4d saCauchyIRLSRigidModel(const Matd3D& src, const Matd3D& dst, const float& tau);
+
+Eigen::Matrix4d rigidTrans(const Matd3D& A, const Matd3D& B, Eigen::MatrixXd& weights);
+
+Matd6D pointcloud2Matd6D(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+                 Eigen::Matrix3d &rot, Eigen::Vector3d &t);
+//
+double
+geometric_verify(const ConfigSetting &config_setting,
+                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+                 //const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
+                Eigen::Matrix3d &rot, Eigen::Vector3d &t);
 
 double
 geometric_verify(const ConfigSetting &config_setting,

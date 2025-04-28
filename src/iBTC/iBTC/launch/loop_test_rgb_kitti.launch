@@ -33,9 +33,9 @@
   <param name="t1" type="double" value = "0"/>
   <param name="t2" type="double" value = "0"/>
 
-  <!-- <param name="save_for_pr_eval" type="int" value = "1"/> -->
-  <param name="save_for_pr_eval" type="int" value = "0"/>
-  <param name="save_for_avgrecall_eval" type="int" value = "1"/>
+  <param name="save_for_pr_eval" type="int" value = "1"/>
+  <!-- <param name="save_for_pr_eval" type="int" value = "0"/>
+  <param name="save_for_avgrecall_eval" type="int" value = "1"/> -->
 
   <!--the searching range for ground truth loop closure. generally speaking, it should be half of LiDAR measurement maximum distance-->
   <!-- range_gtlc_search > 20 is very slow. If you know the maximum revisit distance, you can self-define-->

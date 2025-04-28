@@ -1,6 +1,6 @@
 <launch>
-  <!-- <param name="SaveDir" type="string" value="/home/ros/ws_iBTC/logs/BTC/NCLT/NCLT_121201/"/> -->
-  <param name="SaveDir" type="string" value="/home/ros/ws_iBTC/logs/iBTC/NCLT/NCLT_120820/"/>
+  <param name="SaveDir" type="string" value="/home/ros/ws_iBTC/logs/iBTC/NCLT/NCLT_121201/"/>
+  <!-- <param name="SaveDir" type="string" value="/home/ros/ws_iBTC/logs/iBTC/NCLT/NCLT_120820/"/> -->
   <arg name="rviz" default="true" />
 
   <node
@@ -11,13 +11,13 @@
   />
   <param name="setting_path" type="string" value = "$(find ibtc)/config/config_velo_nclt.yaml"/>
 
-  <!-- <param name="bag_file" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_121201/nclt_121201.bag"/>
+  <param name="bag_file" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_121201/nclt_121201.bag"/>
   <param name="imu_pose_fname" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_121201/imu_poses_nclt121201.txt"/>
-  <param name="cam_pose_fname" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_121201/camera_poses_nclt121201.txt"/> -->
+  <param name="cam_pose_fname" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_121201/camera_poses_nclt121201.txt"/>
 
-  <param name="bag_file" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_120820/nclt_120820.bag"/>
+  <!-- <param name="bag_file" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_120820/nclt_120820.bag"/>
   <param name="imu_pose_fname" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_120820/imu_poses_nclt120820.txt"/>
-  <param name="cam_pose_fname" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_120820/camera_poses_nclt120820.txt"/>
+  <param name="cam_pose_fname" type="string" value = "/media/ros/App/ibtc_data/NCLT/NCLT_120820/camera_poses_nclt120820.txt"/> -->
 
   <param name="IMG_WID" type="int" value = "1616"/>
   <param name="IMG_HEI" type="int" value = "1232"/>

@@ -3439,6 +3439,7 @@ void candidate_searcher_old(
   // getchar();
 }
 
+//RANSAC
 void triangle_solver(std::pair<STD, STD> &std_pair, Eigen::Matrix3d &std_rot,
                      Eigen::Vector3d &std_t) {
   Eigen::Matrix3d src = Eigen::Matrix3d::Zero();
@@ -3987,11 +3988,183 @@ geometric_verify(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
   return useful_match / source_cloud->size();
 }
 
+//
+Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags) {
+    int count = 0;
+    Mati1D nonzero_column(1, flags.count());
+    for (int i = 0; i < flags.cols(); ++i) {
+        if (flags(0, i) > 0) {
+            nonzero_column(0, count++) = i;
+        } 
+    }
+    return nonzero_column;
+}
+
+//IRLS SACAUCY
+Eigen::Matrix4d saCauchyIRLSRigidModel(const Matd3D& src, const Matd3D& dst, const float& tau) {
+    float prev_cost = std::pow(10, 15); // initial energy cost
+    int maxIter = 100; // maximum iteration times
+    int n = src.cols(); // measurement num
+    Eigen::MatrixXd weights = Eigen::MatrixXd::Ones(1, n); // weights vector
+    float alpha = 0.0; 
+    
+    Mati1D inlier_column = Eigen::VectorXi::LinSpaced(n, 0, n - 1).transpose(); // inlier col indices
+    Eigen::Matrix4d trans = Eigen::Matrix4d::Identity(); // output pose
+
+    Matd3D src_current = src;
+    Matd3D dst_current = dst;
+    for (int i = 1; i <= maxIter; ++i) {
+        Matd3D src_temp(src_current.rows(), inlier_column.cols());
+        for (int i = 0; i < inlier_column.cols(); ++i) {
+            src_temp.col(i) = src_current.col(inlier_column(i));
+        }
+        Matd3D dst_temp(dst_current.rows(), inlier_column.cols());
+        for (int i = 0; i < inlier_column.cols(); ++i) {
+            dst_temp.col(i) = dst_current.col(inlier_column(i));
+        }
+        src_current = src_temp;
+        dst_current = dst_temp;
+          
+        trans = rigidTrans(src_current, dst_current, weights); // compute transform
+        Matd3D fit = (trans.block<3, 3>(0, 0) * src_current).colwise() + trans.block<3, 1>(0, 3);
+        Matd1D residuals = (fit - dst_current).colwise().norm(); // compute error
+
+        if (i == 1) {
+            alpha = residuals.cwiseAbs().maxCoeff(); // intial alpha value
+        }
+        Matd1D residuals2 = residuals.array().square();
+        float cost = weights.cwiseProduct(residuals2).sum(); // current cost sum
+
+        Mati1D flags = (residuals.array() < (3 * alpha)).cast<int>();
+        inlier_column = getNonZeroColumnIndicesFromRowVector(flags); // update inlier indcies
+        
+        Matd1D E(residuals.rows(), inlier_column.cols());
+        for (int i = 0; i < inlier_column.cols(); ++i) {
+            E.col(i) = residuals.col(inlier_column(i));
+        }
+        weights = (E.array().square().array() + std::pow(alpha, 2)).cwiseInverse() * std::pow(alpha, 2); // update SA-Cauch Weights
+        float cost_diff = std::abs(cost - prev_cost); // cost diff
+
+        alpha = alpha / tau; // update alpha
+        prev_cost = cost; // update cost
+        if (cost_diff < 0.01 || alpha < 1.0) {
+            break;
+        } 
+    }
+
+    return trans;
+}
+
+Eigen::Matrix4d rigidTrans(const Matd3D& A, const Matd3D& B, Eigen::MatrixXd& weights) {
+    double sw = weights.sum();
+    if (sw < std::numeric_limits<double>::epsilon()) {
+        weights = Eigen::MatrixXd::Ones(1, A.cols());
+        sw = weights.sum();
+    }
+
+    Eigen::MatrixXd w = weights / sw;
+    Eigen::Matrix<double, 3, 1> lc = A * w.transpose();
+    Eigen::Matrix<double, 3, 1> rc = B * w.transpose();
+    Eigen::MatrixXd w2 = w.cwiseSqrt();
+    Eigen::MatrixXd w2_repmat(A.rows(), A.cols());
+    for (int i = 0; i < w2_repmat.rows(); ++i) {
+        w2_repmat.row(i) = w2;
+    }
+
+    Eigen::MatrixXd left = (A.colwise() - lc).cwiseProduct(w2_repmat);
+    Eigen::MatrixXd right = (B.colwise() - rc).cwiseProduct(w2_repmat);
+    Eigen::MatrixXd M = left * right.transpose();
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(M, Eigen::ComputeThinU |
+                                                        Eigen::ComputeThinV);
+    Eigen::Matrix3d V = svd.matrixV();
+    Eigen::Matrix3d U = svd.matrixU();
+    Eigen::Matrix3d R = V * U.transpose();
+    if (R.determinant() < 0) {
+        Eigen::Matrix3d K;
+        K << 1, 0, 0, 0, 1, 0, 0, 0, -1;
+        R = V * K * U.transpose();
+    }
+
+    Eigen::Vector3d t = rc - R * lc;
+
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = R;
+    T.block<3, 1>(0, 3) = t;
+    return T;
+}
+
+Matd6D pointcloud2Matd6D(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+                 Eigen::Matrix3d &rot, Eigen::Vector3d &t)
+{
+    if (!source_cloud || !target_cloud) {
+        throw std::invalid_argument("Input point clouds cannot be null");
+    }
+  
+    size_t source_size = source_cloud->size();
+    
+    Matd6D lier(6, source_size);
+    pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
+      new pcl::KdTreeFLANN<pcl::PointXYZ>); 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
+      new pcl::PointCloud<pcl::PointXYZ>);
+    for (size_t i = 0; i < target_cloud->size(); i++) {
+       pcl::PointXYZ pi;
+       pi.x = target_cloud->points[i].x;
+       pi.y = target_cloud->points[i].y;
+       pi.z = target_cloud->points[i].z;
+       input_cloud->push_back(pi);
+    }
+    kd_tree->setInputCloud(input_cloud);
+    std::vector<int> pointIdxNKNSearch(1);
+    std::vector<float> pointNKNSquaredDistance(1);
+    for (size_t i = 0; i < source_size; i++) {
+        pcl::PointXYZ search_point;
+        search_point.x = source_cloud->points[i].x;
+        search_point.y = source_cloud->points[i].y;
+        search_point.z = source_cloud->points[i].z;
+        Eigen::Vector3d pi(search_point.x, search_point.y, search_point.z);
+        pi = rot * pi + t;
+        search_point.x = pi[0];
+        search_point.y = pi[1];
+        search_point.z = pi[2];
+        lier(0,i) = source_cloud->points[i].x;
+        lier(1,i) = source_cloud->points[i].y;
+        lier(2,i) = source_cloud->points[i].z;
+        if (kd_tree->nearestKSearch(search_point, 1, pointIdxNKNSearch,
+                                pointNKNSquaredDistance) > 0) {
+            pcl::PointXYZINormal nearstPoint =
+                target_cloud->points[pointIdxNKNSearch[0]];
+            lier(3,i) = nearstPoint.x;
+            lier(4,i) = nearstPoint.y;
+            lier(5,i) = nearstPoint.z;
+        }
+        else {
+          if(i<target_cloud->size()){
+              lier(3,i) = target_cloud->points[i].x;
+              lier(4,i) = target_cloud->points[i].y;
+              lier(5,i) = target_cloud->points[i].z;
+          }
+          else{
+              lier(3,i) = 0;
+              lier(4,i) = 0;
+              lier(5,i) = 0;
+          }
+        }
+    }
+    
+    return lier;
+}
+
+//几何验证
+
 double
 geometric_verify(const ConfigSetting &config_setting,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
-                 const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
+                 //const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
+                Eigen::Matrix3d &rot, Eigen::Vector3d &t) {
   pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
       new pcl::KdTreeFLANN<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
@@ -4003,7 +4176,12 @@ geometric_verify(const ConfigSetting &config_setting,
     pi.z = target_cloud->points[i].z;
     input_cloud->push_back(pi);
   }
-
+  //
+  Matd6D lier = pointcloud2Matd6D(source_cloud,target_cloud,rot,t);
+  Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(lier.topRows(3),lier.bottomRows(3),1.3);
+  rot = tran.block<3, 3>(0, 0);
+  t = tran.block<3, 1>(0, 3);
+  //
   std::vector<size_t> index2;
   for (size_t a = 0; a < source_cloud->size(); a+=1)
     index2.push_back(a);
@@ -4055,6 +4233,75 @@ geometric_verify(const ConfigSetting &config_setting,
     if (val == 1) useful_match++;
   return useful_match / index2.size(); //source_cloud->size();
 }
+
+// double
+// geometric_verify(const ConfigSetting &config_setting,
+//                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+//                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+//                  const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
+//   pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
+//       new pcl::KdTreeFLANN<pcl::PointXYZ>);
+//   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
+//       new pcl::PointCloud<pcl::PointXYZ>);
+//   for (size_t i = 0; i < target_cloud->size(); i++) {
+//     pcl::PointXYZ pi;
+//     pi.x = target_cloud->points[i].x;
+//     pi.y = target_cloud->points[i].y;
+//     pi.z = target_cloud->points[i].z;
+//     input_cloud->push_back(pi);
+//   }
+
+//   std::vector<size_t> index2;
+//   for (size_t a = 0; a < source_cloud->size(); a+=1)
+//     index2.push_back(a);
+
+//   std::vector<int> useful_match_vec(index2.size(), 0);
+
+//   kd_tree->setInputCloud(input_cloud);
+//   std::vector<int> pointIdxNKNSearch(1);
+//   std::vector<float> pointNKNSquaredDistance(1);
+//   double useful_match = 0;
+//   double normal_threshold = config_setting.normal_threshold_;
+//   double dis_threshold = config_setting.dis_threshold_;
+//   std::for_each(std::execution::par_unseq, index2.begin(), index2.end(),[&](const size_t &i)
+//   //for (size_t i = 0; i < source_cloud->size(); i++)
+//   {
+//     pcl::PointXYZINormal searchPoint = source_cloud->points[i];
+//     pcl::PointXYZ use_search_point;
+//     use_search_point.x = searchPoint.x;
+//     use_search_point.y = searchPoint.y;
+//     use_search_point.z = searchPoint.z;
+//     Eigen::Vector3d pi(searchPoint.x, searchPoint.y, searchPoint.z);
+//     pi = rot * pi + t;
+//     use_search_point.x = pi[0];
+//     use_search_point.y = pi[1];
+//     use_search_point.z = pi[2];
+//     Eigen::Vector3d ni(searchPoint.normal_x, searchPoint.normal_y,
+//                        searchPoint.normal_z);
+//     ni = rot * ni;
+//     if (kd_tree->nearestKSearch(use_search_point, 1, pointIdxNKNSearch,
+//                                 pointNKNSquaredDistance) > 0) {
+//       pcl::PointXYZINormal nearstPoint =
+//           target_cloud->points[pointIdxNKNSearch[0]];
+//       Eigen::Vector3d tpi(nearstPoint.x, nearstPoint.y, nearstPoint.z);
+//       Eigen::Vector3d tni(nearstPoint.normal_x, nearstPoint.normal_y,
+//                           nearstPoint.normal_z);
+//       Eigen::Vector3d normal_inc = ni - tni;
+//       Eigen::Vector3d normal_add = ni + tni;
+//       double point_to_plane = fabs(tni.transpose() * (pi - tpi));
+//       if ((normal_inc.norm() < normal_threshold ||
+//            normal_add.norm() < normal_threshold) &&
+//           point_to_plane < dis_threshold) {
+//         //useful_match++;
+//         useful_match_vec[i] = 1;
+//       }
+//     }
+//   }
+//   );
+//   for (auto val:useful_match_vec)
+//     if (val == 1) useful_match++;
+//   return useful_match / index2.size(); //source_cloud->size();
+// }
 
 struct PlaneSolver {
   PlaneSolver(Eigen::Vector3d curr_point_, Eigen::Vector3d curr_normal_,
