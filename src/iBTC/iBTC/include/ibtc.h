@@ -569,7 +569,15 @@ geometric_verify(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
                  const Eigen::Matrix3d &rot, const Eigen::Vector3d &t);
 
 //
+double pcResolution(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cloud);
+
+Matd6D ransac1Pt(Matd6D& x, double t);
+
 Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags);
+
+void computeDistanceMatrix(const Matd3D& data, Eigen::MatrixXd& dist_matrix);
+
+void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices);
 
 Eigen::Matrix4d saCauchyIRLSRigidModel(const Matd3D& src, const Matd3D& dst, const float& tau);
 

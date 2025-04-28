@@ -3989,6 +3989,121 @@ geometric_verify(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
 }
 
 //
+//阈值
+double pcResolution(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cloud) {
+
+    pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
+      new pcl::KdTreeFLANN<pcl::PointXYZ>); 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
+      new pcl::PointCloud<pcl::PointXYZ>);
+    for (size_t i = 0; i < cloud->size(); i++) {
+       pcl::PointXYZ pi;
+       pi.x = cloud->points[i].x;
+       pi.y = cloud->points[i].y;
+       pi.z = cloud->points[i].z;
+       input_cloud->push_back(pi);
+    }
+    kd_tree->setInputCloud(input_cloud);
+
+    // sample size
+    int search_num = std::floor((int)input_cloud->size() / 20) * 10;
+    int pt_num = input_cloud->size();
+
+    std::vector<float> distances(search_num);
+    for (int i = 0; i < search_num; ++i) {
+        int idx = std::rand() % pt_num;
+        std::vector<int> idx_nknsearch;
+        std::vector<float> sqdist_nknsearch;
+        kd_tree->nearestKSearch(input_cloud->points[idx], 2, idx_nknsearch, sqdist_nknsearch);
+        distances[i] = sqdist_nknsearch[1];
+    }
+    std::sort(distances.begin(), distances.end());
+    int id_mid = (int)(search_num - 1) / 2;
+    return static_cast<double>(std::sqrt(distances[id_mid]));
+}
+//rancac_1pt
+Matd6D ransac1Pt(Matd6D& x, double t) {
+    int s = 1;
+    int max_trials = 10000;
+    int npts = x.cols();
+
+    double p = 0.99; // Desired probability of choosing at least one samplefree from outliers
+    int trialcount = 0;
+    int bestscore = 0;
+    Matd6D bestinliers; //
+
+    double N = 1; // Dummy initialisation for number of trials.            
+    double t2 = 2.0 * t; // 
+    double eps = std::numeric_limits<double>::epsilon();
+    
+    while (N > trialcount) {
+        int ind = std::rand() % npts;
+        Eigen::Matrix<double, 6, 1> seedpoint = x.col(ind);
+        Matd6D lineset = x.colwise() - seedpoint;
+
+        Matd1D D1 = lineset.topRows(3).colwise().norm();
+        Matd1D D2 = lineset.bottomRows(3).colwise().norm();
+        Matd1D len = (D1 - D2).array().abs();
+       
+        Mati1D flag = (len.array() < t2).cast<int>();
+        Mati1D inlier_column = getNonZeroColumnIndicesFromRowVector(flag);
+        Matd6D inliers(x.rows(), inlier_column.cols());
+        for (int i = 0; i < inlier_column.cols(); ++i) {
+            inliers.col(i) = x.col(inlier_column(i));
+        }
+
+        int s1 = inliers.cols();
+        int inlier_size = 0; // 
+        for (int i = 1; i <= 50; ++i) {
+            Matd3D src = inliers.topRows(3);
+            Matd3D dst = inliers.bottomRows(3);
+
+            Eigen::MatrixXd src_dist_matrix(src.cols(), src.cols());
+            Eigen::MatrixXd dst_dist_matrix(dst.cols(), dst.cols());
+            computeDistanceMatrix(src, src_dist_matrix);
+            computeDistanceMatrix(dst, dst_dist_matrix);
+            Eigen::MatrixXd Z = (src_dist_matrix - dst_dist_matrix).array().abs();
+            Eigen::MatrixXi F = (Z.array() < t2).cast<int>();
+            inlier_size = std::ceil(std::sqrt(F.sum()));
+            
+            Mati1D F_colwise_sum = F.colwise().sum();
+            std::vector<int> sorted_column_indices_total;
+            sortRowVectorDescending(F_colwise_sum, sorted_column_indices_total);
+
+            std::vector<int> sorted_column_indices_inlier(sorted_column_indices_total.begin(), 
+                sorted_column_indices_total.begin() + inlier_size);
+            Matd6D selected_inliers(inliers.rows(), sorted_column_indices_inlier.size());
+            for (int i = 0; i < sorted_column_indices_inlier.size(); ++i) {
+                  selected_inliers.col(i) = inliers.col(sorted_column_indices_inlier[i]);
+            }
+            inliers = selected_inliers;
+
+            if ((s1 - inlier_size) < 5) {
+                break;
+            }
+            s1 = inlier_size;
+        }
+
+        if (inlier_size > bestscore) {
+            bestscore = inlier_size;
+            bestinliers = inliers;
+            double fracinliers = static_cast<double>(inlier_size) / npts;
+            double pNoOutliers = 1 - std::pow(fracinliers, s);
+            pNoOutliers = std::max(eps, pNoOutliers); // Avoid division by -Inf
+            pNoOutliers = std::min(1 - eps, pNoOutliers); // Avoid division by 0.
+            N = log(1-p)/log(pNoOutliers);
+            N = std::max(N, static_cast<double>(0)); // at least try 
+        }
+        ++trialcount; 
+
+        if (trialcount > max_trials) {
+            break;
+        }
+    }
+  
+    return bestinliers;
+}
+
 Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags) {
     int count = 0;
     Mati1D nonzero_column(1, flags.count());
@@ -3998,6 +4113,23 @@ Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags) {
         } 
     }
     return nonzero_column;
+}
+
+void computeDistanceMatrix(const Matd3D& data, Eigen::MatrixXd& dist_matrix) {
+    for (int i = 0; i < data.cols(); ++i)
+        dist_matrix.row(i) = (data.colwise() - data.col(i)).colwise().norm();
+}
+
+void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices) {
+    std::vector<int> sorted_data(data.cols());
+    sorted_column_indices.resize(data.cols());
+    for (int i = 0; i < data.cols(); ++i) {
+        sorted_data[i] = data(0, i);
+        sorted_column_indices[i] = i;
+    }
+
+    std::sort(sorted_column_indices.begin(), sorted_column_indices.end(), [&sorted_data](int i, int j) {
+        return sorted_data[i] > sorted_data[j]; });  
 }
 
 //IRLS SACAUCY
@@ -4178,7 +4310,11 @@ geometric_verify(const ConfigSetting &config_setting,
   }
   //
   Matd6D lier = pointcloud2Matd6D(source_cloud,target_cloud,rot,t);
-  Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(lier.topRows(3),lier.bottomRows(3),1.3);
+  double rs = pcResolution(source_cloud);
+  double rt = pcResolution(target_cloud);
+  double th = std::max(rs, rt);
+  Matd6D inliers_1 = ransac1Pt(lier, 3*th);
+  Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers_1.topRows(3),inliers_1.bottomRows(3),1.3);
   rot = tran.block<3, 3>(0, 0);
   t = tran.block<3, 1>(0, 3);
   //
