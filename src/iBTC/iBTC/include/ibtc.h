@@ -577,7 +577,7 @@ Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags);
 
 void computeDistanceMatrix(const Matd3D& data, Eigen::MatrixXd& dist_matrix);
 
-void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices);
+void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices, int k) ;
 
 Eigen::Matrix4d saCauchyIRLSRigidModel(const Matd3D& src, const Matd3D& dst, const float& tau);
 
@@ -586,13 +586,14 @@ Eigen::Matrix4d rigidTrans(const Matd3D& A, const Matd3D& B, Eigen::MatrixXd& we
 Matd6D pointcloud2Matd6D(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
                  Eigen::Matrix3d &rot, Eigen::Vector3d &t);
-//
+
 double
 geometric_verify(const ConfigSetting &config_setting,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
                  //const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
-                Eigen::Matrix3d &rot, Eigen::Vector3d &t);
+                Eigen::Matrix3d &rot, Eigen::Vector3d &t, double th);
+//
 
 double
 geometric_verify(const ConfigSetting &config_setting,

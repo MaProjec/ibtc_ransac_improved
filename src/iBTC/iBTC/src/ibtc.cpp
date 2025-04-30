@@ -4025,7 +4025,7 @@ double pcResolution(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cloud) {
 Matd6D ransac1Pt(Matd6D& x, double t) {
     int s = 1;
     int max_trials = 10000;
-    int npts = x.cols();
+    //int npts = x.cols();
 
     double p = 0.99; // Desired probability of choosing at least one samplefree from outliers
     int trialcount = 0;
@@ -4036,10 +4036,18 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
     double t2 = 2.0 * t; // 
     double eps = std::numeric_limits<double>::epsilon();
     
+    int skip_len = (int)(x.cols() / 200) + 1;
+    int use_size = x.cols() / skip_len;
+    Matd6D x_1(x.rows(), use_size);
+    for (int i = 0; i < use_size; ++i) {
+            x_1.col(i) = x.col(i*skip_len);
+    }
+    int npts = x_1.cols();
+
     while (N > trialcount) {
         int ind = std::rand() % npts;
-        Eigen::Matrix<double, 6, 1> seedpoint = x.col(ind);
-        Matd6D lineset = x.colwise() - seedpoint;
+        Eigen::Matrix<double, 6, 1> seedpoint = x_1.col(ind);
+        Matd6D lineset = x_1.colwise() - seedpoint;
 
         Matd1D D1 = lineset.topRows(3).colwise().norm();
         Matd1D D2 = lineset.bottomRows(3).colwise().norm();
@@ -4047,9 +4055,9 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
        
         Mati1D flag = (len.array() < t2).cast<int>();
         Mati1D inlier_column = getNonZeroColumnIndicesFromRowVector(flag);
-        Matd6D inliers(x.rows(), inlier_column.cols());
+        Matd6D inliers(x_1.rows(), inlier_column.cols());
         for (int i = 0; i < inlier_column.cols(); ++i) {
-            inliers.col(i) = x.col(inlier_column(i));
+            inliers.col(i) = x_1.col(inlier_column(i));
         }
 
         int s1 = inliers.cols();
@@ -4068,13 +4076,13 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
             
             Mati1D F_colwise_sum = F.colwise().sum();
             std::vector<int> sorted_column_indices_total;
-            sortRowVectorDescending(F_colwise_sum, sorted_column_indices_total);
+            sortRowVectorDescending(F_colwise_sum, sorted_column_indices_total, inlier_size);
 
             std::vector<int> sorted_column_indices_inlier(sorted_column_indices_total.begin(), 
                 sorted_column_indices_total.begin() + inlier_size);
             Matd6D selected_inliers(inliers.rows(), sorted_column_indices_inlier.size());
-            for (int i = 0; i < sorted_column_indices_inlier.size(); ++i) {
-                  selected_inliers.col(i) = inliers.col(sorted_column_indices_inlier[i]);
+            for (int j = 0; j < sorted_column_indices_inlier.size(); ++j) {
+                  selected_inliers.col(j) = inliers.col(sorted_column_indices_inlier[j]);
             }
             inliers = selected_inliers;
 
@@ -4100,7 +4108,7 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
             break;
         }
     }
-  
+    std::cout<<"N:"<<N<<std::endl;
     return bestinliers;
 }
 
@@ -4116,11 +4124,20 @@ Mati1D getNonZeroColumnIndicesFromRowVector(const Mati1D& flags) {
 }
 
 void computeDistanceMatrix(const Matd3D& data, Eigen::MatrixXd& dist_matrix) {
-    for (int i = 0; i < data.cols(); ++i)
-        dist_matrix.row(i) = (data.colwise() - data.col(i)).colwise().norm();
+    // for (int i = 0; i < data.cols(); ++i)
+    //     dist_matrix.row(i) = (data.colwise() - data.col(i)).colwise().norm();
+    
+    // 计算点云的平方和
+    Eigen::VectorXd squared_norm = data.colwise().squaredNorm();
+
+    // dist_matrix(i, j) = sqrt(||data.col(i)||^2 + ||data.col(j)||^2 - 2 * data.col(i).dot(data.col(j)))
+    dist_matrix = (-2.0 * data.transpose() * data).array();
+    dist_matrix.colwise() += squared_norm;
+    dist_matrix.rowwise() += squared_norm.transpose();
+    dist_matrix = dist_matrix.array().sqrt();
 }
 
-void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices) {
+void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices, int k) {
     std::vector<int> sorted_data(data.cols());
     sorted_column_indices.resize(data.cols());
     for (int i = 0; i < data.cols(); ++i) {
@@ -4128,8 +4145,14 @@ void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column
         sorted_column_indices[i] = i;
     }
 
-    std::sort(sorted_column_indices.begin(), sorted_column_indices.end(), [&sorted_data](int i, int j) {
-        return sorted_data[i] > sorted_data[j]; });  
+    // std::sort(sorted_column_indices.begin(), sorted_column_indices.end(), [&sorted_data](int i, int j) {
+    //     return sorted_data[i] > sorted_data[j]; });  
+    std::partial_sort(sorted_column_indices.begin(), 
+                     sorted_column_indices.begin() + k,
+                     sorted_column_indices.end(),
+                     [&sorted_data](int i, int j) {
+                         return sorted_data[i] > sorted_data[j];
+                     });
 }
 
 //IRLS SACAUCY
@@ -4296,7 +4319,7 @@ geometric_verify(const ConfigSetting &config_setting,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
                  //const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
-                Eigen::Matrix3d &rot, Eigen::Vector3d &t) {
+                Eigen::Matrix3d &rot, Eigen::Vector3d &t, double th) {
   pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
       new pcl::KdTreeFLANN<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
@@ -4310,9 +4333,9 @@ geometric_verify(const ConfigSetting &config_setting,
   }
   //
   Matd6D lier = pointcloud2Matd6D(source_cloud,target_cloud,rot,t);
-  double rs = pcResolution(source_cloud);
-  double rt = pcResolution(target_cloud);
-  double th = std::max(rs, rt);
+  // double rs = pcResolution(source_cloud);
+  // double rt = pcResolution(target_cloud);
+  // double th = std::max(rs, rt);
   Matd6D inliers_1 = ransac1Pt(lier, 3*th);
   Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers_1.topRows(3),inliers_1.bottomRows(3),1.3);
   rot = tran.block<3, 3>(0, 0);
@@ -4369,75 +4392,76 @@ geometric_verify(const ConfigSetting &config_setting,
     if (val == 1) useful_match++;
   return useful_match / index2.size(); //source_cloud->size();
 }
+//
 
-// double
-// geometric_verify(const ConfigSetting &config_setting,
-//                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
-//                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
-//                  const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
-//   pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
-//       new pcl::KdTreeFLANN<pcl::PointXYZ>);
-//   pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
-//       new pcl::PointCloud<pcl::PointXYZ>);
-//   for (size_t i = 0; i < target_cloud->size(); i++) {
-//     pcl::PointXYZ pi;
-//     pi.x = target_cloud->points[i].x;
-//     pi.y = target_cloud->points[i].y;
-//     pi.z = target_cloud->points[i].z;
-//     input_cloud->push_back(pi);
-//   }
+double
+geometric_verify(const ConfigSetting &config_setting,
+                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+                 const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
+  pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
+      new pcl::KdTreeFLANN<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
+      new pcl::PointCloud<pcl::PointXYZ>);
+  for (size_t i = 0; i < target_cloud->size(); i++) {
+    pcl::PointXYZ pi;
+    pi.x = target_cloud->points[i].x;
+    pi.y = target_cloud->points[i].y;
+    pi.z = target_cloud->points[i].z;
+    input_cloud->push_back(pi);
+  }
 
-//   std::vector<size_t> index2;
-//   for (size_t a = 0; a < source_cloud->size(); a+=1)
-//     index2.push_back(a);
+  std::vector<size_t> index2;
+  for (size_t a = 0; a < source_cloud->size(); a+=1)
+    index2.push_back(a);
 
-//   std::vector<int> useful_match_vec(index2.size(), 0);
+  std::vector<int> useful_match_vec(index2.size(), 0);
 
-//   kd_tree->setInputCloud(input_cloud);
-//   std::vector<int> pointIdxNKNSearch(1);
-//   std::vector<float> pointNKNSquaredDistance(1);
-//   double useful_match = 0;
-//   double normal_threshold = config_setting.normal_threshold_;
-//   double dis_threshold = config_setting.dis_threshold_;
-//   std::for_each(std::execution::par_unseq, index2.begin(), index2.end(),[&](const size_t &i)
-//   //for (size_t i = 0; i < source_cloud->size(); i++)
-//   {
-//     pcl::PointXYZINormal searchPoint = source_cloud->points[i];
-//     pcl::PointXYZ use_search_point;
-//     use_search_point.x = searchPoint.x;
-//     use_search_point.y = searchPoint.y;
-//     use_search_point.z = searchPoint.z;
-//     Eigen::Vector3d pi(searchPoint.x, searchPoint.y, searchPoint.z);
-//     pi = rot * pi + t;
-//     use_search_point.x = pi[0];
-//     use_search_point.y = pi[1];
-//     use_search_point.z = pi[2];
-//     Eigen::Vector3d ni(searchPoint.normal_x, searchPoint.normal_y,
-//                        searchPoint.normal_z);
-//     ni = rot * ni;
-//     if (kd_tree->nearestKSearch(use_search_point, 1, pointIdxNKNSearch,
-//                                 pointNKNSquaredDistance) > 0) {
-//       pcl::PointXYZINormal nearstPoint =
-//           target_cloud->points[pointIdxNKNSearch[0]];
-//       Eigen::Vector3d tpi(nearstPoint.x, nearstPoint.y, nearstPoint.z);
-//       Eigen::Vector3d tni(nearstPoint.normal_x, nearstPoint.normal_y,
-//                           nearstPoint.normal_z);
-//       Eigen::Vector3d normal_inc = ni - tni;
-//       Eigen::Vector3d normal_add = ni + tni;
-//       double point_to_plane = fabs(tni.transpose() * (pi - tpi));
-//       if ((normal_inc.norm() < normal_threshold ||
-//            normal_add.norm() < normal_threshold) &&
-//           point_to_plane < dis_threshold) {
-//         //useful_match++;
-//         useful_match_vec[i] = 1;
-//       }
-//     }
-//   }
-//   );
-//   for (auto val:useful_match_vec)
-//     if (val == 1) useful_match++;
-//   return useful_match / index2.size(); //source_cloud->size();
-// }
+  kd_tree->setInputCloud(input_cloud);
+  std::vector<int> pointIdxNKNSearch(1);
+  std::vector<float> pointNKNSquaredDistance(1);
+  double useful_match = 0;
+  double normal_threshold = config_setting.normal_threshold_;
+  double dis_threshold = config_setting.dis_threshold_;
+  std::for_each(std::execution::par_unseq, index2.begin(), index2.end(),[&](const size_t &i)
+  //for (size_t i = 0; i < source_cloud->size(); i++)
+  {
+    pcl::PointXYZINormal searchPoint = source_cloud->points[i];
+    pcl::PointXYZ use_search_point;
+    use_search_point.x = searchPoint.x;
+    use_search_point.y = searchPoint.y;
+    use_search_point.z = searchPoint.z;
+    Eigen::Vector3d pi(searchPoint.x, searchPoint.y, searchPoint.z);
+    pi = rot * pi + t;
+    use_search_point.x = pi[0];
+    use_search_point.y = pi[1];
+    use_search_point.z = pi[2];
+    Eigen::Vector3d ni(searchPoint.normal_x, searchPoint.normal_y,
+                       searchPoint.normal_z);
+    ni = rot * ni;
+    if (kd_tree->nearestKSearch(use_search_point, 1, pointIdxNKNSearch,
+                                pointNKNSquaredDistance) > 0) {
+      pcl::PointXYZINormal nearstPoint =
+          target_cloud->points[pointIdxNKNSearch[0]];
+      Eigen::Vector3d tpi(nearstPoint.x, nearstPoint.y, nearstPoint.z);
+      Eigen::Vector3d tni(nearstPoint.normal_x, nearstPoint.normal_y,
+                          nearstPoint.normal_z);
+      Eigen::Vector3d normal_inc = ni - tni;
+      Eigen::Vector3d normal_add = ni + tni;
+      double point_to_plane = fabs(tni.transpose() * (pi - tpi));
+      if ((normal_inc.norm() < normal_threshold ||
+           normal_add.norm() < normal_threshold) &&
+          point_to_plane < dis_threshold) {
+        //useful_match++;
+        useful_match_vec[i] = 1;
+      }
+    }
+  }
+  );
+  for (auto val:useful_match_vec)
+    if (val == 1) useful_match++;
+  return useful_match / index2.size(); //source_cloud->size();
+}
 
 struct PlaneSolver {
   PlaneSolver(Eigen::Vector3d curr_point_, Eigen::Vector3d curr_normal_,

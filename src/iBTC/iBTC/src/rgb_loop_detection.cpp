@@ -268,6 +268,9 @@ int main(int argc, char **argv) {
     int layer_num = 2;
     int pre_ds_image_level = 0;
     int set_used_region = 0;
+    int t_flag = 1;
+    double th = 1.0;
+
     nh.param<std::string>("data_name", data_name, "");
     nh.param<std::string>("setting_path", setting_path, "");
     nh.param<std::string>("bag_file", bag_file, "");
@@ -1062,11 +1065,17 @@ int main(int argc, char **argv) {
                     t_ransac += time_inc(t_ransac_end, t_ransac_start);
                     if (fine_sucess)
                     {
-
+                        if(t_flag == 1)
+                        {
+                            double rs = pcResolution(frame_plane_cloud);
+                            double rt = pcResolution(history_plane_list[alternative_match[i].match_frame_]);
+                            th = std::max(rs, rt);
+                            t_flag = 0;
+                        }
                         double score = geometric_verify(config_setting,
                             frame_plane_cloud,
                             history_plane_list[alternative_match[i].match_frame_], std_rot,
-                            std_t);
+                            std_t,th);
 
                         debug_file << "[Geo Ver] Icp score:" << score << ", match frame:" << alternative_match[i].match_frame_ << std::endl;
                         proposed_candidates.push_back({alternative_match[i].match_frame_,score});
