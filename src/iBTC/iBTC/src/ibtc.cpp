@@ -4036,7 +4036,7 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
     double t2 = 2.0 * t; // 
     double eps = std::numeric_limits<double>::epsilon();
     
-    int skip_len = (int)(x.cols() / 200) + 1;
+    int skip_len = (int)(x.cols() / 50) + 1;
     int use_size = x.cols() / skip_len;
     Matd6D x_1(x.rows(), use_size);
     for (int i = 0; i < use_size; ++i) {
@@ -4153,6 +4153,122 @@ void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column
                      [&sorted_data](int i, int j) {
                          return sorted_data[i] > sorted_data[j];
                      });
+}
+
+//RANSAC_2pt
+Matd6D ransac2Pt(Matd6D& x, double t) {
+    int s = 2;
+    int max_trials = 10000;
+    int npts = x.cols();
+
+    double p = 0.99; // Desired probability of choosing at least one samplefree from outliers
+    int trialcount = 0;
+    int bestscore = 0;
+    Matd6D bestinliers;
+
+    double N = 1; // Dummy initialisation for number of trials.         
+    double t2 = 2.0 * t; //
+    double eps = std::numeric_limits<double>::epsilon();
+
+    while (N > trialcount) {
+        int id_1 = std::rand() % npts;
+        int id_2 = std::rand() % npts;
+        if (id_1 == id_2) {
+            continue;
+        }
+        Eigen::Matrix<double, 6, 1> diff = x.col(id_1) - x.col(id_2);
+        double diff_dist = std::abs(diff.head(3).norm() - diff.tail(3).norm());
+        
+        if (diff_dist > t2) {
+            continue;
+        }
+
+        Matd6D xinliers = x;
+        Matd6D lineset1 = x.colwise() - x.col(id_1);
+        Matd6D lineset2 = x.colwise() - x.col(id_2);
+        Matd1D len1 = (lineset1.topRows(3).colwise().norm() - lineset1.bottomRows(3).colwise().norm()).cwiseAbs();
+        Matd1D len2 = (lineset2.topRows(3).colwise().norm() - lineset2.bottomRows(3).colwise().norm()).cwiseAbs();
+
+        Mati1D flag1 = (len1.array() < t2).cast<int>();
+        Mati1D flag2 = (len2.array() < t2).cast<int>();
+        Mati1D flag = flag1.cwiseMin(flag2);
+        Mati1D inlier_column_rough = getNonZeroColumnIndicesFromRowVector(flag);
+        
+        if (flag.sum() < 3) {
+            continue;
+        }
+
+        Matd6D lineset1_f(lineset1.rows(), inlier_column_rough.cols());
+        for (int i = 0; i < inlier_column_rough.cols(); ++i) {
+            lineset1_f.col(i) = lineset1.col(inlier_column_rough(i));
+        }
+        Matd6D lineset2_f(lineset2.rows(), inlier_column_rough.cols());
+        for (int i = 0; i < inlier_column_rough.cols(); ++i) {
+            lineset2_f.col(i) = lineset2.col(inlier_column_rough(i));
+        }
+        Matd6D xinliers_temp(xinliers.rows(), inlier_column_rough.cols());
+        for (int i = 0; i < inlier_column_rough.cols(); ++i) {
+            xinliers_temp.col(i) = xinliers.col(inlier_column_rough(i));
+        }
+        xinliers = xinliers_temp;
+        Mati1D inlier_flag = Mati1D::Zero(1, lineset1_f.cols());
+
+        for (int i = 0; i < lineset1_f.cols(); ++i) {
+            Eigen::Matrix<double, 3, 1> xk = lineset1_f.col(i).head(3);
+            Eigen::Matrix<double, 3, 1> yk = lineset1_f.col(i).tail(3);
+            Eigen::Matrix<double, 3, 1> xl = lineset2_f.col(i).head(3);
+            Eigen::Matrix<double, 3, 1> yl = lineset2_f.col(i).tail(3);
+            
+            float ty = yk.dot(yl) / (yk.norm() * yl.norm() + 0.00001);
+            if (ty < -1) {
+                ty = -1;
+            } else if (ty > 1) {
+                ty = 1;
+            } 
+
+            float tx = xk.dot(xl) / (xk.norm() * xl.norm() + 0.00001);
+            if (tx < -1) {
+                tx = -1;
+            } else if (tx > 1) {
+                tx = 1;
+            } 
+
+            double thetay = std::acos(ty);
+            double thetax = std::acos(tx);
+            double alpha = std::asin(std::min(0.9999, 2 * t / (xk.norm() + 0.00001))); // 4
+            double beta = std::asin(std::min(0.9999, 2 * t / (xl.norm() + 0.00001))); // 4
+            double dtheta = std::abs(thetay - thetax);
+
+            if (dtheta < alpha + beta) {
+                inlier_flag(0, i) = 1;
+            }
+        }
+
+        // Find the number of inliers to this model.
+        Mati1D inlier_column_refined = getNonZeroColumnIndicesFromRowVector(inlier_flag);
+        Matd6D updated_inliers(xinliers.rows(), inlier_column_refined.cols());
+        for (int i = 0; i < inlier_column_refined.cols(); ++i) {
+            updated_inliers.col(i) = xinliers.col(inlier_column_refined(i));
+        }
+        int inlier_size = updated_inliers.cols();
+
+        if (inlier_size >= bestscore) {
+            bestscore = inlier_size;
+            bestinliers = updated_inliers;
+            double fracinliers = (double)inlier_size / npts;
+            double pNoOutliers = 1 - std::pow(fracinliers, s);
+            pNoOutliers = std::max(eps, pNoOutliers); //Avoid division by -Inf
+            pNoOutliers = std::min(1 - eps, pNoOutliers); //Avoid division by 0.
+            N = log(1-p)/log(pNoOutliers);
+            N = std::max(N, static_cast<double>(0)); 
+        }
+        ++trialcount; 
+
+        if (trialcount > max_trials) {
+            break;
+        } 
+    }
+    return bestinliers;
 }
 
 //IRLS SACAUCY
@@ -4337,7 +4453,9 @@ geometric_verify(const ConfigSetting &config_setting,
   // double rt = pcResolution(target_cloud);
   // double th = std::max(rs, rt);
   Matd6D inliers_1 = ransac1Pt(lier, 3*th);
-  Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers_1.topRows(3),inliers_1.bottomRows(3),1.3);
+  Matd6D inliers_2 = ransac2Pt(lier, 3*th);
+  Matd6D inliers =  inliers_2;
+  Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers.topRows(3),inliers.bottomRows(3),1.3);
   rot = tran.block<3, 3>(0, 0);
   t = tran.block<3, 1>(0, 3);
   //

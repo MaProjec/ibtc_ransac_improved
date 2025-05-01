@@ -579,6 +579,8 @@ void computeDistanceMatrix(const Matd3D& data, Eigen::MatrixXd& dist_matrix);
 
 void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column_indices, int k) ;
 
+Matd6D ransac2Pt(Matd6D& x, double t);
+
 Eigen::Matrix4d saCauchyIRLSRigidModel(const Matd3D& src, const Matd3D& dst, const float& tau);
 
 Eigen::Matrix4d rigidTrans(const Matd3D& A, const Matd3D& B, Eigen::MatrixXd& weights);
