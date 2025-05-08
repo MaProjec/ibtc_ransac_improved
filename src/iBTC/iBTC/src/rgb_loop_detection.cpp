@@ -861,6 +861,8 @@ int main(int argc, char **argv) {
                         out_msg.encoding = sensor_msgs::image_encodings::BGR8; // Or whatever
                         out_msg.image = temp_img2;
                         pub_raw_img.publish(out_msg);
+                        std::string filename_2 = save_directory + std::to_string(key_frame_id) + "_overall_raw.png";
+                        cv::imwrite(filename_2.c_str(), temp_img2);
                     }
                 }
 
@@ -1072,10 +1074,11 @@ int main(int argc, char **argv) {
                             th = std::max(rs, rt);
                             t_flag = 0;
                         }
+                        TwoStageInliersFilter(frame_plane_cloud,history_plane_list[alternative_match[i].match_frame_],std_rot,std_t,th);
                         double score = geometric_verify(config_setting,
                             frame_plane_cloud,
                             history_plane_list[alternative_match[i].match_frame_], std_rot,
-                            std_t,th);
+                            std_t);
 
                         debug_file << "[Geo Ver] Icp score:" << score << ", match frame:" << alternative_match[i].match_frame_ << std::endl;
                         proposed_candidates.push_back({alternative_match[i].match_frame_,score});

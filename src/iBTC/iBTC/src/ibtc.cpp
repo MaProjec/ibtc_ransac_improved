@@ -4601,118 +4601,27 @@ Matd6D pointcloud2Matd6D(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &sourc
     return lier;
 }
 
-//几何验证
-
-double
-geometric_verify(const ConfigSetting &config_setting,
-                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
-                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
-                 //const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
-                Eigen::Matrix3d &rot, Eigen::Vector3d &t, double th) {
-  pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(
-      new pcl::KdTreeFLANN<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr input_cloud(
-      new pcl::PointCloud<pcl::PointXYZ>);
-  for (size_t i = 0; i < target_cloud->size(); i++) {
-    pcl::PointXYZ pi;
-    pi.x = target_cloud->points[i].x;
-    pi.y = target_cloud->points[i].y;
-    pi.z = target_cloud->points[i].z;
-    input_cloud->push_back(pi);
-  }
-  //
+//TwoStageInliersFilter
+void TwoStageInliersFilter(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+                           const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+                           Eigen::Matrix3d &rot, Eigen::Vector3d &t, double th) {
   Matd6D lier = pointcloud2Matd6D(source_cloud,target_cloud,rot,t);
-  // double rs = pcResolution(source_cloud);
-  // double rt = pcResolution(target_cloud);
-  // double th = std::max(rs, rt);
-  
-  // Matd6D inliers_3 = ransac3Pt(lier, 3*th,rot,t);
-  // std::cout << "inliers_3 size: " << inliers_3.cols() << std::endl;
-  // if(inliers_3.cols() > 3){
-  //   Matd6D inliers_1 = ransac1Pt(inliers_3, 3*th);
-  //   std::cout << "inliers_1 size: " << inliers_1.cols() << std::endl;
-  //   if(inliers_1.cols() > 3){
-  //     Matd6D inliers_2 = ransac2Pt(inliers_1, 3*th);
-  //     std::cout << "inliers_2 size: " << inliers_2.cols() << std::endl;
-  //     if(inliers_2.cols() > 3){
-  //       Matd6D inliers =  inliers_2;
-  //       Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers.topRows(3),inliers.bottomRows(3),1.3);
-  //       rot = tran.block<3, 3>(0, 0);
-  //       t = tran.block<3, 1>(0, 3);
-  //     }
-  //   }
-  // }
   Matd6D inliers_1 = ransac1Pt(lier, 3*th);
   std::cout << "inliers_1 size: " << inliers_1.cols() << std::endl;
   if(inliers_1.cols() > 10){
     Matd6D inliers_2 = ransac2Pt(inliers_1, 3*th);
     std::cout << "inliers_2 size: " << inliers_2.cols() << std::endl;
     if(inliers_2.cols() > 10){
-      Matd6D inliers_3 = ransac3Pt(inliers_2, 3*th,rot,t);
-      std::cout << "inliers_3 size: " << inliers_3.cols() << std::endl;
-      Matd6D inliers =  inliers_3;
-      if(inliers.cols() < 3){
-        inliers = inliers_2;
-      }
+      Matd6D inliers =  inliers_2;
       Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers.topRows(3),inliers.bottomRows(3),1.3);
       rot = tran.block<3, 3>(0, 0);
       t = tran.block<3, 1>(0, 3);
     }
-  }
-  //
-  std::vector<size_t> index2;
-  for (size_t a = 0; a < source_cloud->size(); a+=1)
-    index2.push_back(a);
-
-  std::vector<int> useful_match_vec(index2.size(), 0);
-
-  kd_tree->setInputCloud(input_cloud);
-  std::vector<int> pointIdxNKNSearch(1);
-  std::vector<float> pointNKNSquaredDistance(1);
-  double useful_match = 0;
-  double normal_threshold = config_setting.normal_threshold_;
-  double dis_threshold = config_setting.dis_threshold_;
-  std::for_each(std::execution::par_unseq, index2.begin(), index2.end(),[&](const size_t &i)
-  //for (size_t i = 0; i < source_cloud->size(); i++)
-  {
-    pcl::PointXYZINormal searchPoint = source_cloud->points[i];
-    pcl::PointXYZ use_search_point;
-    use_search_point.x = searchPoint.x;
-    use_search_point.y = searchPoint.y;
-    use_search_point.z = searchPoint.z;
-    Eigen::Vector3d pi(searchPoint.x, searchPoint.y, searchPoint.z);
-    pi = rot * pi + t;
-    use_search_point.x = pi[0];
-    use_search_point.y = pi[1];
-    use_search_point.z = pi[2];
-    Eigen::Vector3d ni(searchPoint.normal_x, searchPoint.normal_y,
-                       searchPoint.normal_z);
-    ni = rot * ni;
-    if (kd_tree->nearestKSearch(use_search_point, 1, pointIdxNKNSearch,
-                                pointNKNSquaredDistance) > 0) {
-      pcl::PointXYZINormal nearstPoint =
-          target_cloud->points[pointIdxNKNSearch[0]];
-      Eigen::Vector3d tpi(nearstPoint.x, nearstPoint.y, nearstPoint.z);
-      Eigen::Vector3d tni(nearstPoint.normal_x, nearstPoint.normal_y,
-                          nearstPoint.normal_z);
-      Eigen::Vector3d normal_inc = ni - tni;
-      Eigen::Vector3d normal_add = ni + tni;
-      double point_to_plane = fabs(tni.transpose() * (pi - tpi));
-      if ((normal_inc.norm() < normal_threshold ||
-           normal_add.norm() < normal_threshold) &&
-          point_to_plane < dis_threshold) {
-        //useful_match++;
-        useful_match_vec[i] = 1;
-      }
-    }
-  }
-  );
-  for (auto val:useful_match_vec)
-    if (val == 1) useful_match++;
-  return useful_match / index2.size(); //source_cloud->size();
+  }                          
 }
 //
 
+//几何验证
 double
 geometric_verify(const ConfigSetting &config_setting,
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,

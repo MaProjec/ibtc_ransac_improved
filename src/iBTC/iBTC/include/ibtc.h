@@ -600,12 +600,9 @@ Matd6D pointcloud2Matd6D(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &sourc
                  const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
                  Eigen::Matrix3d &rot, Eigen::Vector3d &t);
 
-double
-geometric_verify(const ConfigSetting &config_setting,
-                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
-                 const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
-                 //const Eigen::Matrix3d &rot, const Eigen::Vector3d &t) {
-                Eigen::Matrix3d &rot, Eigen::Vector3d &t, double th);
+void TwoStageInliersFilter(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
+                           const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
+                           Eigen::Matrix3d &rot, Eigen::Vector3d &t, double th);
 //
 
 double
