@@ -581,6 +581,17 @@ void sortRowVectorDescending(const Mati1D& data, std::vector<int>& sorted_column
 
 Matd6D ransac2Pt(Matd6D& x, double t);
 
+Matd6D ransac3Pt(Matd6D& x, double t,Eigen::Matrix3d &rot, Eigen::Vector3d &tz);
+
+bool isDegenerate(const Eigen::Matrix<double, 6, 3>& x);
+
+bool iscolinear(const Eigen::Vector3d& p1, const Eigen::Vector3d& p2, 
+    const Eigen::Vector3d& p3);
+
+Eigen::Matrix4d rigidMotion(const Matd3D& A, const Matd3D& B);
+
+Mati1D dist3d(const Eigen::Matrix4d& trans, const Matd6D& x, const double t);
+
 Eigen::Matrix4d saCauchyIRLSRigidModel(const Matd3D& src, const Matd3D& dst, const float& tau);
 
 Eigen::Matrix4d rigidTrans(const Matd3D& A, const Matd3D& B, Eigen::MatrixXd& weights);

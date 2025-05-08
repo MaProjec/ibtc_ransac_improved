@@ -4035,13 +4035,14 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
     double N = 1; // Dummy initialisation for number of trials.            
     double t2 = 2.0 * t; // 
     double eps = std::numeric_limits<double>::epsilon();
-    
-    int skip_len = (int)(x.cols() / 50) + 1;
+    //降采样
+    int skip_len = (int)(x.cols() / 500) + 1;
     int use_size = x.cols() / skip_len;
     Matd6D x_1(x.rows(), use_size);
     for (int i = 0; i < use_size; ++i) {
             x_1.col(i) = x.col(i*skip_len);
     }
+    // Matd6D x_1 = x;
     int npts = x_1.cols();
 
     while (N > trialcount) {
@@ -4108,7 +4109,6 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
             break;
         }
     }
-    std::cout<<"N:"<<N<<std::endl;
     return bestinliers;
 }
 
@@ -4269,6 +4269,179 @@ Matd6D ransac2Pt(Matd6D& x, double t) {
         } 
     }
     return bestinliers;
+}
+
+//ransac_3pt
+Matd6D ransac3Pt(Matd6D& x, double t,Eigen::Matrix3d &rot, Eigen::Vector3d &tz) {
+    int max_data_trials = 1000;
+    int max_trials = 10000;
+    int s = 3;
+    int npts = x.cols();
+    
+    double p = 0.99; //Desired probability of choosing at least one sample
+    int trialcount = 0;
+    int bestscore = 0;
+    Mati1D bestinliers_column; //
+
+    double N = 1; //Dummy initialisation for number of trials.
+    double eps = std::numeric_limits<double>::epsilon();
+    
+    Eigen::Matrix4d trans = Eigen::Matrix4d::Identity();
+    Eigen::Matrix4d trans_best = Eigen::Matrix4d::Identity();
+    while (N > trialcount) {
+        int count = 1;
+        bool degenerate = true;
+
+        while (degenerate) {
+            int id_1 = std::rand() % npts;
+            int id_2 = std::rand() % npts;
+            int id_3 = std::rand() % npts;
+            if (id_1 == id_2 || id_1 == id_3 || id_2 == id_3) {
+                continue;
+            }
+            Matd6D x_1(x.rows(), 3);
+            x_1.col(0) = x.col(id_1);
+            x_1.col(1) = x.col(id_2);
+            x_1.col(2) = x.col(id_3);
+            degenerate = isDegenerate(x_1);
+
+            if (!degenerate) {
+                trans = rigidMotion(x_1.topRows(3), x_1.bottomRows(3));
+            } 
+
+            ++count;
+            if (count > max_data_trials) {
+                break;
+            }
+        }
+        Mati1D inlier_column = dist3d(trans, x, t);
+        int inlier_size = inlier_column.cols();
+        std::cout << "inlier_column: " << inlier_size << std::endl;
+        if (inlier_size < 3) {
+            Matd6D bestinliers(x.rows(), 1);
+            return bestinliers;
+        }
+        if (inlier_size >= bestscore) {
+            bestscore = inlier_size;
+            bestinliers_column = inlier_column;
+            trans_best = trans;
+            
+            double fracinliers = 0, pNoOutliers = 0;  
+
+            Mati1D loInliers = bestinliers_column;
+            int loIter = 0;
+            int loRansacMaxIter = 50;//
+            int NOSample = std::min(s * 7, (int)loInliers.cols());
+            
+            if (inlier_size < s) {
+                fracinliers = static_cast<double>(inlier_size) / npts;
+                pNoOutliers = 1 - std::pow(fracinliers, s);
+                pNoOutliers = std::max(eps, pNoOutliers); //Avoid division by -Inf
+                pNoOutliers = std::min(1 - eps, pNoOutliers); //Avoid division by 0.
+                N = log(1-p)/log(pNoOutliers);
+                continue;                    
+            }
+            if (trialcount < 50) {
+                loIter = loRansacMaxIter;
+            }
+
+            std::vector<int> loInliers_vec(&loInliers(0, 0), loInliers.data() + loInliers.size());
+            while (loIter < loRansacMaxIter) {
+                loIter = loIter + 1;
+                std::random_shuffle(loInliers_vec.begin(), loInliers_vec.end());
+                std::vector<int> loind(loInliers_vec.begin(), loInliers_vec.begin() + NOSample);
+                Matd6D x_2(x.rows(), loind.size());
+                for(size_t i = 0; i < loind.size(); i++) {
+                    int j = loind[i];
+                    x_2.col(i) = x.col(j);
+                }
+                trans = rigidMotion(x_2.topRows(3), x_2.bottomRows(3));
+                Mati1D loUpdatedInliers = dist3d(trans, x, t);
+                
+                if (loUpdatedInliers.cols() > bestscore) {
+                    bestscore = loUpdatedInliers.cols();
+                    inlier_size = bestscore;
+                    bestinliers_column = loUpdatedInliers;
+                    trans_best = trans;
+                }
+            }
+            
+            fracinliers =  inlier_size / static_cast<double>(npts);
+            pNoOutliers = 1.0 - std::pow(fracinliers, s);
+            pNoOutliers = std::max(eps, pNoOutliers);
+            pNoOutliers = std::min(1 - eps, pNoOutliers);
+            N = log(1-p)/log(pNoOutliers);
+            N = std::max(N, static_cast<double>(0)); // at least try
+        }
+        ++trialcount;
+        if (trialcount > max_trials) {
+            break; // Safeguard against being stuck in this loop forever
+        }
+    }
+
+    if (trans_best.array().isNaN().any()) {
+        std::cout << "Three-POint RANSAC's Matrix exist NaN.\n";
+        trans_best.setIdentity();
+    }
+    Mati1D best_inlier_column = dist3d(trans_best, x, t);
+    Matd6D bestinliers(x.rows(), best_inlier_column.cols());
+    for (int i = 0; i < best_inlier_column.cols(); ++i) {
+        bestinliers.col(i) = x.col(best_inlier_column(i));
+    }
+    return bestinliers;
+}
+
+bool isDegenerate(const Eigen::Matrix<double, 6, 3>& x) {
+    Eigen::Matrix<double, 3, 3> x1 = x.topRows(3);
+    Eigen::Matrix<double, 3, 3> x2 = x.bottomRows(3);
+    bool flag_1 = iscolinear(x1.col(0), x1.col(1), x1.col(2));
+    bool flag_2 = iscolinear(x2.col(0), x2.col(1), x2.col(2));
+    if (flag_1 || flag_2) {
+        return true;
+    } else {
+        return false;
+    }
+}
+bool iscolinear(const Eigen::Vector3d& p1, const Eigen::Vector3d& p2, 
+    const Eigen::Vector3d& p3) {
+    Eigen::Vector3d p1p2 = p2 - p1;
+    Eigen::Vector3d p1p3 = p3 - p1;
+    return (p1p2.cross(p1p3)).norm() < std::numeric_limits<double>::epsilon();
+}
+
+Eigen::Matrix4d rigidMotion(const Matd3D& A, const Matd3D& B) {
+    Eigen::Matrix<double, 3, 1> lc = A.rowwise().mean();
+    Eigen::Matrix<double, 3, 1> rc = B.rowwise().mean();
+    Eigen::Matrix3d M = (A.colwise() - lc) * (B.colwise() - rc).transpose();
+    
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(M, Eigen::ComputeThinU |
+                                                        Eigen::ComputeThinV);
+    Eigen::Matrix3d V = svd.matrixV();
+    Eigen::Matrix3d U = svd.matrixU();
+    Eigen::Matrix3d R = V * U.transpose();
+    if (R.determinant() < 0) {
+        Eigen::Matrix3d K;
+        K << 1, 0, 0, 0, 1, 0, 0, 0, -1;
+        R = V * K * U.transpose();
+    }
+
+    Eigen::Vector3d t = rc - R * lc;
+
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T.block<3, 3>(0, 0) = R;
+    T.block<3, 1>(0, 3) = t;
+    return T;
+}
+
+
+Mati1D dist3d(const Eigen::Matrix4d& trans, const Matd6D& x, const double t) {
+    Eigen::Matrix3d R = trans.block<3, 3>(0, 0);
+    Eigen::Vector3d T = trans.block<3, 1>(0, 3);
+    Matd3D x2_ = (R * x.topRows(3)).colwise() + T;
+    Matd1D d2 = (x2_ - x.bottomRows(3)).colwise().norm();
+    Mati1D flag = (d2.array() < t).cast<int>();
+    return getNonZeroColumnIndicesFromRowVector(flag);
 }
 
 //IRLS SACAUCY
@@ -4452,12 +4625,40 @@ geometric_verify(const ConfigSetting &config_setting,
   // double rs = pcResolution(source_cloud);
   // double rt = pcResolution(target_cloud);
   // double th = std::max(rs, rt);
+  
+  // Matd6D inliers_3 = ransac3Pt(lier, 3*th,rot,t);
+  // std::cout << "inliers_3 size: " << inliers_3.cols() << std::endl;
+  // if(inliers_3.cols() > 3){
+  //   Matd6D inliers_1 = ransac1Pt(inliers_3, 3*th);
+  //   std::cout << "inliers_1 size: " << inliers_1.cols() << std::endl;
+  //   if(inliers_1.cols() > 3){
+  //     Matd6D inliers_2 = ransac2Pt(inliers_1, 3*th);
+  //     std::cout << "inliers_2 size: " << inliers_2.cols() << std::endl;
+  //     if(inliers_2.cols() > 3){
+  //       Matd6D inliers =  inliers_2;
+  //       Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers.topRows(3),inliers.bottomRows(3),1.3);
+  //       rot = tran.block<3, 3>(0, 0);
+  //       t = tran.block<3, 1>(0, 3);
+  //     }
+  //   }
+  // }
   Matd6D inliers_1 = ransac1Pt(lier, 3*th);
-  Matd6D inliers_2 = ransac2Pt(lier, 3*th);
-  Matd6D inliers =  inliers_2;
-  Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers.topRows(3),inliers.bottomRows(3),1.3);
-  rot = tran.block<3, 3>(0, 0);
-  t = tran.block<3, 1>(0, 3);
+  std::cout << "inliers_1 size: " << inliers_1.cols() << std::endl;
+  if(inliers_1.cols() > 10){
+    Matd6D inliers_2 = ransac2Pt(inliers_1, 3*th);
+    std::cout << "inliers_2 size: " << inliers_2.cols() << std::endl;
+    if(inliers_2.cols() > 10){
+      Matd6D inliers_3 = ransac3Pt(inliers_2, 3*th,rot,t);
+      std::cout << "inliers_3 size: " << inliers_3.cols() << std::endl;
+      Matd6D inliers =  inliers_3;
+      if(inliers.cols() < 3){
+        inliers = inliers_2;
+      }
+      Eigen::Matrix4d tran  = saCauchyIRLSRigidModel(inliers.topRows(3),inliers.bottomRows(3),1.3);
+      rot = tran.block<3, 3>(0, 0);
+      t = tran.block<3, 1>(0, 3);
+    }
+  }
   //
   std::vector<size_t> index2;
   for (size_t a = 0; a < source_cloud->size(); a+=1)
