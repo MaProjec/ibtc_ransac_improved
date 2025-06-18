@@ -269,6 +269,7 @@ int main(int argc, char **argv) {
     int pre_ds_image_level = 0;
     int set_used_region = 0;
     int t_flag = 1;
+    int t_count = 0;
     double th = 1.0;
 
     nh.param<std::string>("data_name", data_name, "");
@@ -822,7 +823,7 @@ int main(int argc, char **argv) {
                         extract_2dkeypt_roughly(eig, eigtmp, gray_ds_img, cov, Dx, Dy, cv::Mat(),
                                                 corners_tmp_list[img_id], corners_out_list[img_id], harrisR_list[img_id], layer_num);
 
-                    std::string fname = save_directory+std::to_string(key_frame_id)+"_"+std::to_string(img_id)+".png";
+                    std::string fname = save_directory+std::to_string(key_frame_id)+"_"+std::to_string(img_id)+"_depth.png";
                     find_more_accurate_pixel(temp_img, gray_img, corners_tmp_list[img_id], corners_out_list[img_id], layer_num, fname);
                     extract_brief_fromimage(corners_out_list[img_id], gray_img, sum, descriptors_list[img_id],
                                             brief_arrays_mm128_list[img_id]);
@@ -1073,6 +1074,12 @@ int main(int argc, char **argv) {
                             double rt = pcResolution(history_plane_list[alternative_match[i].match_frame_]);
                             th = std::max(rs, rt);
                             t_flag = 0;
+                        }
+                        if(t_flag == 0)
+                        {
+                            t_count++;
+                            if(t_count==100)
+                                t_flag = 1;
                         }
                         TwoStageInliersFilter(frame_plane_cloud,history_plane_list[alternative_match[i].match_frame_],std_rot,std_t,th);
                         double score = geometric_verify(config_setting,

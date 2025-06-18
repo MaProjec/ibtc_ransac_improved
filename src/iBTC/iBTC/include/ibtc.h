@@ -221,7 +221,8 @@ template <> struct hash<VOXEL_LOC> {
   int64 operator()(const VOXEL_LOC &s) const {
     using std::hash;
     using std::size_t;
-    return ((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x);
+    //return ((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x);
+    return (((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x)) % MAX_N;
   }
 };
 } // namespace std
@@ -246,7 +247,8 @@ template <> struct hash<STD_LOC> {
   int64 operator()(const STD_LOC &s) const {
     using std::hash;
     using std::size_t;
-    return ((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x);
+    //return ((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x);
+    return (((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x)) % MAX_N;
     // return ((((((((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N +
     //              (s.x)) *
     //             HASH_P) %

@@ -4032,11 +4032,11 @@ Matd6D ransac1Pt(Matd6D& x, double t) {
     int bestscore = 0;
     Matd6D bestinliers; //
 
-    double N = 1; // Dummy initialisation for number of trials.            
+    double N = 100; // Dummy initialisation for number of trials.            
     double t2 = 2.0 * t; // 
     double eps = std::numeric_limits<double>::epsilon();
     //降采样
-    int skip_len = (int)(x.cols() / 500) + 1;
+    int skip_len = (int)(x.cols() / 200) + 1;
     int use_size = x.cols() / skip_len;
     Matd6D x_1(x.rows(), use_size);
     for (int i = 0; i < use_size; ++i) {
@@ -4166,7 +4166,7 @@ Matd6D ransac2Pt(Matd6D& x, double t) {
     int bestscore = 0;
     Matd6D bestinliers;
 
-    double N = 1; // Dummy initialisation for number of trials.         
+    double N = 100; // Dummy initialisation for number of trials.         
     double t2 = 2.0 * t; //
     double eps = std::numeric_limits<double>::epsilon();
 
@@ -4447,7 +4447,7 @@ Mati1D dist3d(const Eigen::Matrix4d& trans, const Matd6D& x, const double t) {
 //IRLS SACAUCY
 Eigen::Matrix4d saCauchyIRLSRigidModel(const Matd3D& src, const Matd3D& dst, const float& tau) {
     float prev_cost = std::pow(10, 15); // initial energy cost
-    int maxIter = 100; // maximum iteration times
+    int maxIter = 150; // maximum iteration times
     int n = src.cols(); // measurement num
     Eigen::MatrixXd weights = Eigen::MatrixXd::Ones(1, n); // weights vector
     float alpha = 0.0; 

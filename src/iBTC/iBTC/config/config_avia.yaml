@@ -34,7 +34,7 @@ vis_sim_threshold: 0.7
 
 # candidate search
 skip_near_num: 50
-candidate_num: 5
+candidate_num: 25  #5
 sub_frame_num: 10
 ransac_Rt_thr: 4
 #similarity_threshold: 0.7
